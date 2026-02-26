@@ -1,79 +1,91 @@
 // ============================================================
-// index.ts — Entry point của server
-// Tạo HTTP server thuần (không dùng Express) lắng nghe request
-// từ client và điều phối tới đúng controller.
+// index.ts — HTTP server entry point. Không dùng Express —
+//            tất cả routing là if/else thủ công.
 //
-// Các route hiện có:
-//   GET  /api/stock/:ticker  → phân tích cổ phiếu
-//   GET  /health             → kiểm tra server còn sống không
+// Routes:
+//   GET  /api/stock/:ticker  → StockController.analyze()
+//   GET  /images/:filename   → serve file .jpg từ public/images/
+//   GET  /health             → { status: "ok" }
 //   *    /*                  → 404
 // ============================================================
 
-import "dotenv/config"; // Load biến môi trường từ file .env vào process.env
+import "dotenv/config";       // Load .env trước khi dùng process.env bất kỳ đâu
 import http from "http";
+import fs from "fs";
+import path from "path";
 import { StockController } from "./controllers/stock.controller.js";
 
-// Đọc PORT từ .env; nếu không có thì mặc định 3000
 const PORT = process.env.PORT ?? "3000";
+const IMAGES_DIR = path.resolve("public/images"); // Thư mục chứa ảnh AI đã sinh
 
-// Khởi tạo controller một lần duy nhất (singleton pattern đơn giản)
-// Cache và service sống suốt vòng đời server
-const stockController = new StockController();
+const stockController = new StockController(); // Khởi tạo 1 lần, dùng lại cho mọi request
 
-// Tạo HTTP server — mỗi request đến sẽ chạy async callback bên dưới
 const server = http.createServer(async (req, res) => {
-
-  // Bước 1: Parse URL để lấy pathname và query string
-  // Phải truyền base URL vì req.url chỉ là path tương đối (VD: "/api/stock/AAPL")
+  // Parse URL để lấy pathname và query string sạch
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
-  // Bước 2: Set CORS headers — cho phép mọi origin gọi API
-  // (Frontend dev server thường chạy ở cổng khác nên cần điều này)
+  // CORS — cho phép mọi origin (chỉ phù hợp dev, production nên lock lại)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Content-Type", "application/json"); // Mặc định response là JSON
 
-  // Bước 3: Xử lý CORS preflight request (browser tự gửi OPTIONS trước khi gửi GET)
-  // Server chỉ cần trả 204 No Content để browser biết CORS được chấp nhận
+  // Preflight request từ browser — trả 204 ngay, không cần xử lý tiếp
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
     return;
   }
 
-  // ── Route: GET /api/stock/:ticker ──────────────────────────────────────────
-  // Dùng regex để bắt ticker từ URL path.
-  // Pattern: chỉ chấp nhận chữ cái và dấu chấm (VD: BRK.B)
-  const match = url.pathname.match(/^\/api\/stock\/([A-Za-z.]+)$/);
-  if (req.method === "GET" && match) {
-    const ticker = match[1] ?? ""; // match[1] là capture group — phần ticker
+  // ── Route: GET /api/stock/:ticker ────────────────────────────────────────
+  // Regex chỉ cho phép chữ cái và dấu chấm (VD: "VIC", "VN30F1M")
+  const stockMatch = url.pathname.match(/^\/api\/stock\/([A-Za-z.]+)$/);
+  if (req.method === "GET" && stockMatch) {
+    const ticker = stockMatch[1] ?? ""; // stockMatch[1] là captured group của ticker
 
-    // Gọi controller để phân tích (có cache, gọi Groq, gọi HuggingFace)
+    // analyze() xử lý toàn bộ pipeline: RSS → classify → featured → image
     const result = await stockController.analyze(ticker);
 
-    // Nếu thành công → 200 OK; nếu lỗi → 500 Internal Server Error
+    res.setHeader("Content-Type", "application/json");
     res.writeHead(result.success ? 200 : 500);
     res.end(JSON.stringify(result));
     return;
   }
 
-  // ── Route: GET /health ─────────────────────────────────────────────────────
-  // Dùng để monitoring / load balancer ping kiểm tra server còn sống không
+  // ── Route: GET /images/:filename — Serve ảnh AI đã lưu trên disk ─────────
+  // Regex chỉ cho phép ký tự an toàn, phải kết thúc .jpg — tránh path traversal
+  const imageMatch = url.pathname.match(/^\/images\/([A-Za-z0-9_.-]+\.jpg)$/);
+  if (req.method === "GET" && imageMatch) {
+    const filename = imageMatch[1] ?? "";
+    const filePath = path.join(IMAGES_DIR, filename);
+
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400"); // Browser cache 24h — khớp với TTL server cache
+      res.writeHead(200);
+      fs.createReadStream(filePath).pipe(res); // Stream file thay vì đọc vào RAM
+    } else {
+      res.setHeader("Content-Type", "application/json");
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: "Image not found" }));
+    }
+    return;
+  }
+
+  // ── Route: GET /health — Dùng để check server còn sống không ────────────
   if (req.method === "GET" && url.pathname === "/health") {
+    res.setHeader("Content-Type", "application/json");
     res.writeHead(200);
     res.end(JSON.stringify({ status: "ok" }));
     return;
   }
 
-  // ── Fallthrough: 404 Not Found ─────────────────────────────────────────────
-  // Mọi path không khớp với route nào ở trên đều trả 404
+  // ── 404 — Mọi route không khớp ────────────────────────────────────────────
+  res.setHeader("Content-Type", "application/json");
   res.writeHead(404);
   res.end(JSON.stringify({ error: "Route not found" }));
 });
 
-// Bắt đầu lắng nghe kết nối, in URL ra console để tiện dùng thủ công
 server.listen(PORT, () => {
   console.log(`Server đang chạy tại http://localhost:${PORT}`);
-  console.log(`Thử: http://localhost:${PORT}/api/stock/AAPL`);
+  console.log(`Thử: http://localhost:${PORT}/api/stock/VIC`);
 });

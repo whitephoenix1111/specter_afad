@@ -1,110 +1,104 @@
 // ============================================================
-// controllers/stock.controller.ts
-// Điều phối toàn bộ luồng xử lý cho một yêu cầu phân tích cổ phiếu.
+// controllers/stock.controller.ts — Orchestrator của toàn bộ pipeline.
+// Nhận ticker từ route, điều phối 4 bước xử lý tuần tự,
+// quản lý in-memory cache để tránh gọi lại API trong 24h.
 //
-// Luồng hoạt động khi nhận ticker:
-//   1. Chuẩn hoá ticker (trim + uppercase)
-//   2. Kiểm tra cache in-memory — nếu còn hạn (< 24h) thì trả luôn
-//   3. Nếu cache miss / hết hạn → gọi ResearchService (Groq/LLM)
-//   4. Gọi ImageService (HuggingFace) để sinh ảnh minh hoạ
-//   5. Ghép kết quả + lưu vào cache
-//   6. Trả về cho caller (index.ts → client)
+// Pipeline:
+//   [1] NewsService.fetchNews()            → quét RSS, resolve URL, làm sạch
+//   [2] ClassifyService.classify()         → Groq phân loại vào 4 nhóm
+//   [3] ClassifyService.findFeaturedRisk() → chọn bài RỦI RO nổi bật, sinh summary
+//   [4] ImageService.resolveImages()       → lấy ảnh RSS hoặc sinh AI
 // ============================================================
 
-import { ResearchService } from "../services/research.service.js";
+import { NewsService } from "../services/news.service.js";
+import { ClassifyService } from "../services/classify.service.js";
 import { ImageService } from "../services/image.service.js";
 import type { StockAnalysisResponse } from "../types/stock.js";
 
-// Kiểu dữ liệu của một entry trong cache.
-// Lưu cả data (kết quả hoàn chỉnh) lẫn cachedAt (để tính tuổi cache).
+// Cấu trúc mỗi entry trong cache Map
 interface CacheEntry {
-  data: StockAnalysisResponse;
-  cachedAt: Date;
+  data: StockAnalysisResponse; // Kết quả đầy đủ đã xử lý xong
+  cachedAt: Date;              // Thời điểm lưu — dùng để tính TTL còn lại
 }
 
-// Kết quả cache hết hạn sau 24 giờ.
-// Giá trị tính bằng milliseconds để so với Date.now().
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24h
+const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24h tính bằng millisecond
 
 export class StockController {
-  private researchService: ResearchService; // Gọi Groq để phân tích text
-  private imageService: ImageService;       // Gọi HuggingFace để sinh ảnh
-  private cache: Map<string, CacheEntry>;   // Cache in-memory, key = ticker (VD: "AAPL")
+  private newsService: NewsService;
+  private classifyService: ClassifyService;
+  private imageService: ImageService;
+
+  // Cache in-memory — key là ticker UPPERCASE (VD: "VIC"), value là CacheEntry.
+  // Reset khi restart server. Không persist ra disk.
+  private cache: Map<string, CacheEntry>;
 
   constructor() {
-    // Khởi tạo các service và cache ngay khi controller được tạo
-    this.researchService = new ResearchService();
+    this.newsService = new NewsService();
+    this.classifyService = new ClassifyService();
     this.imageService = new ImageService();
     this.cache = new Map();
   }
 
-  /**
-   * Phân tích một mã cổ phiếu — có cache 24h.
-   * @param ticker - Mã cổ phiếu nhận từ URL (VD: "aapl", "TSLA", "BRK.B")
-   * @returns Object chứa success flag, fromCache flag, data, và error (nếu có)
-   */
   async analyze(ticker: string): Promise<{
     success: boolean;
     fromCache: boolean;
     data: StockAnalysisResponse | null;
     error: string | null;
   }> {
-
-    // ── Bước 1: Chuẩn hoá ticker ─────────────────────────────────────────────
-    // Loại bỏ khoảng trắng thừa, chuyển sang chữ hoa
-    // để cache key nhất quán (không bị "aapl" vs "AAPL" cache miss)
+    // Normalize ticker: trim whitespace + uppercase để cache key nhất quán
+    // VD: " vic " → "VIC", "hpg" → "HPG"
     const normalizedTicker = ticker.trim().toUpperCase();
 
-    // Guard: ticker rỗng sau khi trim → trả lỗi ngay, không gọi API
     if (!normalizedTicker) {
       return { success: false, fromCache: false, data: null, error: "Ticker is required." };
     }
 
-    // ── Bước 2: Kiểm tra cache in-memory ─────────────────────────────────────
+    // Kiểm tra cache trước khi gọi bất kỳ API nào
     const cached = this.cache.get(normalizedTicker);
     if (cached) {
-      // Tính xem entry này đã được cache bao lâu rồi (ms)
       const age = Date.now() - cached.cachedAt.getTime();
-
       if (age < CACHE_DURATION_MS) {
-        // Cache còn hợp lệ → trả luôn, không tốn API call
+        // Cache còn hạn → trả ngay, không chạy pipeline
         console.log(`[Cache HIT] ${normalizedTicker} — còn ${Math.round((CACHE_DURATION_MS - age) / 60000)} phút`);
         return { success: true, fromCache: true, data: cached.data, error: null };
       }
-
-      // Cache đã quá 24h → đánh dấu expired, bước tiếp theo sẽ fetch lại
-      console.log(`[Cache EXPIRED] ${normalizedTicker} — fetch lại từ API`);
+      // Cache hết hạn → sẽ bị ghi đè sau khi pipeline xong
+      console.log(`[Cache EXPIRED] ${normalizedTicker}`);
     }
 
     try {
-      // ── Bước 3: Gọi ResearchService → Groq (LLaMA 70B) ──────────────────────
-      // Kết quả là StockAnalysisResponse chứa insights (tiếng Việt) + imagePrompt (tiếng Anh)
-      console.log(`[Research] Đang phân tích ${normalizedTicker}...`);
-      const analysis = await this.researchService.analyzeStock(normalizedTicker);
+      // Bước 1: Fetch RSS và parse bài thô
+      console.log(`\n[1/4] Quét tin tức cho ${normalizedTicker}...`);
+      const rawArticles = await this.newsService.fetchNews(normalizedTicker);
+      console.log(`      → ${rawArticles.length} bài`);
 
-      // ── Bước 4: Gọi ImageService → HuggingFace (FLUX.1-schnell) ─────────────
-      // Dùng imagePrompt từ bước 3 để sinh ảnh minh hoạ cho cổ phiếu
-      // Kết quả là chuỗi base64 Data URL
-      console.log(`[Image] Đang tạo ảnh cho ${normalizedTicker}...`);
-      const imageUrl = await this.imageService.generateImageUrl(analysis.imagePrompt);
+      // Bước 2: Groq phân loại tất cả bài trong 1 request
+      console.log(`[2/4] Phân loại bằng Groq...`);
+      const categorized = await this.classifyService.classify(normalizedTicker, rawArticles);
+      console.log(`      → Xong`);
 
-      // ── Bước 5: Ghép kết quả hoàn chỉnh ─────────────────────────────────────
-      // Spread toàn bộ analysis + gắn thêm imageUrl vừa tạo
+      // Bước 3: Tìm bài RỦI RO nổi bật + sinh summary (tối đa 2 Groq calls thêm)
+      console.log(`[3/4] Tìm bài RỦI RO nổi bật...`);
+      const withFeatured = await this.classifyService.findFeaturedRisk(categorized);
+      console.log(`      → Xong`);
+
+      // Bước 4: Resolve ảnh — chạy song song cho tất cả bài
+      console.log(`[4/4] Lấy ảnh (RSS media + AI fallback)...`);
+      const articlesWithImages = await this.imageService.resolveImages(withFeatured, normalizedTicker);
+      console.log(`      → Xong\n`);
+
       const result: StockAnalysisResponse = {
-        ...analysis,
-        imageUrl,
+        ticker: normalizedTicker,
+        articles: articlesWithImages,
+        cachedAt: new Date(),
       };
 
-      // ── Bước 6: Lưu vào cache ────────────────────────────────────────────────
-      // Key = ticker chuẩn hoá; cachedAt lấy từ chính result để đồng bộ timestamp
+      // Lưu vào cache — ghi đè nếu đã có entry cũ (kể cả hết hạn)
       this.cache.set(normalizedTicker, { data: result, cachedAt: result.cachedAt });
-      console.log(`[Cache SET] ${normalizedTicker} — lưu lúc ${result.cachedAt.toISOString()}`);
-
-      // ── Bước 7: Trả về cho caller ────────────────────────────────────────────
       return { success: true, fromCache: false, data: result, error: null };
 
     } catch (err) {
-      // Bất kỳ lỗi nào từ Groq hoặc HuggingFace đều bị bắt tại đây
+      // Bất kỳ bước nào throw → log và trả error response về client
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error(`[Error] ${normalizedTicker}: ${message}`);
       return { success: false, fromCache: false, data: null, error: message };
