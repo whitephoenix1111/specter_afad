@@ -1,27 +1,53 @@
-import React, { useState } from 'react';
-import { BiSun, BiSearch } from "react-icons/bi"
-import SearchPopup from '../popups/SearchPopup'
+// ============================================================
+// components/widgets/SearchBar.tsx
+// Widget thanh tìm kiếm nằm trong sidebar — hiển thị ngày hôm nay
+// và là trigger mở SearchPopup.
+//
+// SearchBar KHÔNG tự fetch — chỉ nhận prop onSearch từ BentoGrid
+// rồi truyền tiếp vào SearchPopup dưới dạng onSubmit.
+//
+// Luồng sự kiện:
+//   User click thanh search
+//     → isSearchOpen = true → SearchPopup hiện
+//       → User nhập "VIC" + Enter
+//         → onSubmit("VIC") → onSearch("VIC") [prop từ BentoGrid]
+//           → fetchStock("VIC") [trong useStockNews hook ở App.tsx]
+// ============================================================
 
-const SearchBar = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+import React, { useState } from 'react';
+import { BiSun, BiSearch } from "react-icons/bi";
+import SearchPopup from '../popups/SearchPopup';
+
+
+// ── Props ──────────────────────────────────────────────────
+interface SearchBarProps {
+  // Callback nhận ticker đã uppercase, bubble lên đến useStockNews.fetchStock()
+  onSearch: (ticker: string) => void;
+}
+
+
+const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
+
+  // ── State nội bộ: chỉ kiểm soát popup mở/đóng ────────────
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Mock data cho ngày tháng - Trong thực tế nên dùng date-fns hoặc Intl.DateTimeFormat
+
+  // ── Tính toán ngày hiện tại ──────────────────────────────
+  // Tính tại thời điểm component render — không cần useEffect hay state
+  // vì ngày không thay đổi trong suốt session của user.
+  const now = new Date();
+  const dayNames = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"];
   const today = {
-    dayOfWeek: "Thứ năm",
-    date: "19 THÁNG 9",
-    label: "HÔM NAY"
+    dayOfWeek: dayNames[now.getDay()],                       // VD: "Thứ năm"
+    date: `${now.getDate()} THÁNG ${now.getMonth() + 1}`,   // VD: "19 THÁNG 9"
+    label: "HÔM NAY",
   };
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
-    // Logic tìm kiếm mã cổ phiếu sẽ thực hiện ở đây
-  };
 
   return (
     <div className="flex flex-col w-full max-w-md px-[20px] py-[40px] bg-white font-sans border-b">
-      
-      {/* Header: Date Display */}
+
+      {/* Khối hiển thị ngày */}
       <div className="flex flex-col mb-12">
         <div className="flex items-center gap-2 text-orange-500 font-bold text-[18px] ml-auto">
           <BiSun size={24} />
@@ -35,31 +61,34 @@ const SearchBar = () => {
         </div>
       </div>
 
-      {/* Input: Search Field */}
+      {/* Thanh search giả — toàn bộ vùng này là nút bấm để mở popup.
+          Input là readOnly vì việc nhập thật xảy ra bên trong SearchPopup. */}
       <div className="relative group" onClick={() => setIsSearchOpen(true)}>
         <div className="flex items-center border-b border-gray-800 pb-4 cursor-pointer">
           <input
             type="text"
             placeholder="Tìm cổ phiếu"
-            value={searchTerm}
-            onChange={handleSearch}
-            readOnly
+            readOnly // Chỉ để trưng bày — click sẽ mở SearchPopup
             className="w-full text-[14px] outline-none placeholder-gray-400 bg-transparent cursor-pointer"
           />
-          <button 
-            aria-label="Search"
-            className="ml-2 hover:scale-110 transition-transform"
-          >
+          <button aria-label="Search" className="ml-2 hover:scale-110 transition-transform">
             <BiSearch size={24} className="text-black" />
           </button>
         </div>
       </div>
 
+      {/* SearchPopup: controlled hoàn toàn bởi isSearchOpen */}
       <SearchPopup
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
+        // Khi popup submit: gọi onSearch (prop từ BentoGrid) rồi đóng popup.
+        // onSearch đã được SearchPopup gọi bên trong handleSubmit, nhưng
+        // ta đóng popup tại đây để SearchBar kiểm soát state của chính mình.
+        onSubmit={(ticker) => {
+          onSearch(ticker);
+          setIsSearchOpen(false);
+        }}
       />
-
     </div>
   );
 };
