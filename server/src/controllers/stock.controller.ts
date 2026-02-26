@@ -1,42 +1,38 @@
 // ============================================================
 // controllers/stock.controller.ts — Orchestrator của toàn bộ pipeline.
-// Nhận ticker từ route, điều phối 4 bước xử lý tuần tự,
-// quản lý in-memory cache để tránh gọi lại API trong 24h.
 //
-// Pipeline:
+// Thay đổi so với phiên bản cũ:
+//   - Bỏ in-memory cache Map → dùng Firestore làm nguồn dữ liệu
+//   - Logic incremental: chỉ xử lý bài MỚI chưa có trong Firestore
+//     (so sánh qua article.url — unique identifier của mỗi bài)
+//   - Merge bài mới vào Firestore, giữ tối đa MAX_ARTICLES_STORED bài gần nhất
+//   - Không có bài mới → không gọi Groq/HuggingFace, tiết kiệm quota
+//
+// Pipeline (chỉ chạy cho bài mới):
 //   [1] NewsService.fetchNews()            → quét RSS, resolve URL, làm sạch
 //   [2] ClassifyService.classify()         → Groq phân loại vào 4 nhóm
 //   [3] ClassifyService.findFeaturedRisk() → chọn bài RỦI RO nổi bật, sinh summary
-//   [4] ImageService.resolveImages()       → lấy ảnh RSS hoặc sinh AI
+//   [4] ImageService.resolveImages()       → lấy ảnh RSS hoặc sinh AI lên Cloudinary
 // ============================================================
 
+import { db } from "../firebase.js";
 import { NewsService } from "../services/news.service.js";
 import { ClassifyService } from "../services/classify.service.js";
 import { ImageService } from "../services/image.service.js";
-import type { StockAnalysisResponse } from "../types/stock.js";
+import type { CategorizedArticle, StockAnalysisResponse } from "../types/stock.js";
 
-// Cấu trúc mỗi entry trong cache Map
-interface CacheEntry {
-  data: StockAnalysisResponse; // Kết quả đầy đủ đã xử lý xong
-  cachedAt: Date;              // Thời điểm lưu — dùng để tính TTL còn lại
-}
-
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24h tính bằng millisecond
+const COLLECTION = "stocks";           // Tên collection Firestore
+const MAX_ARTICLES_STORED = 20;        // Giữ tối đa 20 bài gần nhất mỗi ticker
 
 export class StockController {
   private newsService: NewsService;
   private classifyService: ClassifyService;
   private imageService: ImageService;
 
-  // Cache in-memory — key là ticker UPPERCASE (VD: "VIC"), value là CacheEntry.
-  // Reset khi restart server. Không persist ra disk.
-  private cache: Map<string, CacheEntry>;
-
   constructor() {
     this.newsService = new NewsService();
     this.classifyService = new ClassifyService();
     this.imageService = new ImageService();
-    this.cache = new Map();
   }
 
   async analyze(ticker: string): Promise<{
@@ -45,60 +41,87 @@ export class StockController {
     data: StockAnalysisResponse | null;
     error: string | null;
   }> {
-    // Normalize ticker: trim whitespace + uppercase để cache key nhất quán
-    // VD: " vic " → "VIC", "hpg" → "HPG"
     const normalizedTicker = ticker.trim().toUpperCase();
 
     if (!normalizedTicker) {
       return { success: false, fromCache: false, data: null, error: "Ticker is required." };
     }
 
-    // Kiểm tra cache trước khi gọi bất kỳ API nào
-    const cached = this.cache.get(normalizedTicker);
-    if (cached) {
-      const age = Date.now() - cached.cachedAt.getTime();
-      if (age < CACHE_DURATION_MS) {
-        // Cache còn hạn → trả ngay, không chạy pipeline
-        console.log(`[Cache HIT] ${normalizedTicker} — còn ${Math.round((CACHE_DURATION_MS - age) / 60000)} phút`);
-        return { success: true, fromCache: true, data: cached.data, error: null };
-      }
-      // Cache hết hạn → sẽ bị ghi đè sau khi pipeline xong
-      console.log(`[Cache EXPIRED] ${normalizedTicker}`);
-    }
-
     try {
-      // Bước 1: Fetch RSS và parse bài thô
-      console.log(`\n[1/4] Quét tin tức cho ${normalizedTicker}...`);
+      // ── Đọc data hiện tại từ Firestore ───────────────────────────────────
+      const docRef = db.collection(COLLECTION).doc(normalizedTicker);
+      const docSnap = await docRef.get();
+
+      const existingArticles: CategorizedArticle[] =
+        docSnap.exists ? (docSnap.data()?.articles ?? []) : [];
+
+      // Set các URL đã có → dùng để so sánh nhanh O(1)
+      const existingUrls = new Set(existingArticles.map((a) => a.url));
+
+      console.log(`\n[${normalizedTicker}] Firestore hiện có ${existingArticles.length} bài`);
+
+      // ── Bước 1: Fetch RSS ─────────────────────────────────────────────────
+      console.log(`[1/4] Quét RSS...`);
       const rawArticles = await this.newsService.fetchNews(normalizedTicker);
-      console.log(`      → ${rawArticles.length} bài`);
+      console.log(`      → ${rawArticles.length} bài từ RSS`);
 
-      // Bước 2: Groq phân loại tất cả bài trong 1 request
-      console.log(`[2/4] Phân loại bằng Groq...`);
-      const categorized = await this.classifyService.classify(normalizedTicker, rawArticles);
+      // ── Lọc bài mới (chưa có trong Firestore) ────────────────────────────
+      const newArticles = rawArticles.filter((a) => !existingUrls.has(a.url));
+      console.log(`      → ${newArticles.length} bài MỚI chưa có trong Firestore`);
+
+      if (newArticles.length === 0) {
+        // Không có bài mới → trả thẳng data từ Firestore, không tốn quota
+        console.log(`[${normalizedTicker}] Không có bài mới, trả data từ Firestore.\n`);
+        const result: StockAnalysisResponse = {
+          ticker: normalizedTicker,
+          articles: existingArticles,
+          cachedAt: docSnap.data()?.updatedAt?.toDate() ?? new Date(),
+        };
+        return { success: true, fromCache: true, data: result, error: null };
+      }
+
+      // ── Bước 2: Classify chỉ bài mới ─────────────────────────────────────
+      console.log(`[2/4] Phân loại ${newArticles.length} bài mới bằng Groq...`);
+      const categorized = await this.classifyService.classify(normalizedTicker, newArticles);
       console.log(`      → Xong`);
 
-      // Bước 3: Tìm bài RỦI RO nổi bật + sinh summary (tối đa 2 Groq calls thêm)
+      // ── Bước 3: findFeaturedRisk trên toàn bộ (mới + cũ) ─────────────────
+      // Merge tạm để tìm bài RỦI RO nổi bật trong toàn bộ context
       console.log(`[3/4] Tìm bài RỦI RO nổi bật...`);
-      const withFeatured = await this.classifyService.findFeaturedRisk(categorized);
+      const mergedForFeatured = [...categorized, ...existingArticles];
+      const withFeatured = await this.classifyService.findFeaturedRisk(mergedForFeatured);
       console.log(`      → Xong`);
 
-      // Bước 4: Resolve ảnh — chạy song song cho tất cả bài
-      console.log(`[4/4] Lấy ảnh (RSS media + AI fallback)...`);
-      const articlesWithImages = await this.imageService.resolveImages(withFeatured, normalizedTicker);
+      // ── Bước 4: Resolve ảnh chỉ cho bài mới ──────────────────────────────
+      // Bài cũ đã có imageUrl rồi, không cần sinh lại
+      console.log(`[4/4] Lấy ảnh cho ${newArticles.length} bài mới...`);
+      const newCategorized = withFeatured.slice(0, categorized.length); // chỉ lấy phần bài mới
+      const oldArticles    = withFeatured.slice(categorized.length);    // phần bài cũ giữ nguyên
+      const newWithImages  = await this.imageService.resolveImages(newCategorized, normalizedTicker);
       console.log(`      → Xong\n`);
+
+      // ── Merge và giới hạn số lượng ────────────────────────────────────────
+      // Bài mới đứng đầu (mới nhất), bài cũ theo sau, cắt bớt nếu vượt MAX
+      const mergedArticles = [...newWithImages, ...oldArticles].slice(0, MAX_ARTICLES_STORED);
+
+      // ── Ghi vào Firestore ─────────────────────────────────────────────────
+      const now = new Date();
+      await docRef.set({
+        ticker: normalizedTicker,
+        articles: mergedArticles,
+        updatedAt: now,
+      });
+      console.log(`[${normalizedTicker}] Đã lưu ${mergedArticles.length} bài vào Firestore.`);
 
       const result: StockAnalysisResponse = {
         ticker: normalizedTicker,
-        articles: articlesWithImages,
-        cachedAt: new Date(),
+        articles: mergedArticles,
+        cachedAt: now,
       };
 
-      // Lưu vào cache — ghi đè nếu đã có entry cũ (kể cả hết hạn)
-      this.cache.set(normalizedTicker, { data: result, cachedAt: result.cachedAt });
       return { success: true, fromCache: false, data: result, error: null };
 
     } catch (err) {
-      // Bất kỳ bước nào throw → log và trả error response về client
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error(`[Error] ${normalizedTicker}: ${message}`);
       return { success: false, fromCache: false, data: null, error: message };
