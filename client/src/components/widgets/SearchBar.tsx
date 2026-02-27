@@ -23,10 +23,12 @@ import SearchPopup from '../popups/SearchPopup';
 interface SearchBarProps {
   // Callback nhận ticker đã uppercase, bubble lên đến useStockNews.fetchStock()
   onSearch: (ticker: string) => void;
+  // Callback thêm mã mới vào danh mục sau khi search thành công
+  onAddToPortfolio: (ticker: string) => void;
 }
 
 
-const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
+const SearchBar: React.FC<SearchBarProps> = ({ onSearch, onAddToPortfolio }) => {
 
   // ── State nội bộ: chỉ kiểm soát popup mở/đóng ────────────
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -81,11 +83,9 @@ const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
       <SearchPopup
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
-        // Khi popup submit: gọi onSearch (prop từ BentoGrid) rồi đóng popup.
-        // onSearch đã được SearchPopup gọi bên trong handleSubmit, nhưng
-        // ta đóng popup tại đây để SearchBar kiểm soát state của chính mình.
         onSubmit={(ticker) => {
           onSearch(ticker);
+          onAddToPortfolio(ticker);
           setIsSearchOpen(false);
         }}
       />

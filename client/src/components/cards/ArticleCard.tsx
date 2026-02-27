@@ -10,6 +10,7 @@
 // ============================================================
 
 import React from 'react';
+import { resolveImageUrl, makeOnError } from '../../utils/fallbackImage';
 
 
 // ── Props ──────────────────────────────────────────────────
@@ -30,12 +31,13 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
   source      = "",
   subCategory = "---",
   title       = "Tiêu đề bài viết",
-  imageUrl    = "https://picsum.photos/400/300",
+  imageUrl    = "",
+  // subCategory ใช้แล้ว ด้านล่าง — ไม่ต้องประกาศซ้ำ
   url         = "#",
 }) => {
   return (
     // group: cho phép Tailwind dùng group-hover để đổi grayscale ảnh khi hover toàn card
-    <article className="group flex flex-col w-full bg-white pr-[30px] pl-[60px] py-[40px] border-b">
+    <article className="group flex flex-col w-full bg-white pr-[30px] pl-[30px] py-[40px] border-b">
 
       {/* ── HEADER: Ngày đăng + tên báo ── */}
       <div className="flex items-center gap-3 mb-2">
@@ -69,12 +71,10 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
         {/* Khung ảnh: w-[95%] để lộ một khoảng nhỏ bên phải cho nút absolute */}
         <div className="overflow-hidden bg-gray-100 w-[95%]">
           <img
-            src={imageUrl || "https://picsum.photos/400/300"}
+            src={resolveImageUrl(imageUrl, subCategory)}
             alt={title}
-            // Mặc định ảnh hiển thị grayscale, hover toàn card → ảnh chuyển màu (group-hover)
             className="w-full grayscale group-hover:grayscale-0 transition-all duration-500 object-cover aspect-[4/3]"
-            // Fallback nếu URL ảnh hỏng (Cloudinary down, link RSS 404)
-            onError={(e) => { (e.target as HTMLImageElement).src = "https://picsum.photos/400/300"; }}
+            onError={makeOnError(subCategory)}
           />
         </div>
 

@@ -13,6 +13,7 @@
 // ============================================================
 
 import React from 'react';
+import { resolveImageUrl, makeOnError } from '../../utils/fallbackImage';
 
 
 // ── Props ──────────────────────────────────────────────────
@@ -41,7 +42,7 @@ const HeroCard: React.FC<HeroCardProps> = ({
 }) => {
   return (
     // group: kích hoạt group-hover để ảnh chuyển từ grayscale sang màu khi hover toàn card
-    <article className="group flex flex-col w-full bg-white pr-[30px] pl-[60px] py-[40px]">
+    <article className="group flex flex-col w-full bg-white pr-[30px] pl-[30px] py-[40px]">
 
       {/* ── HEADER: Ngày + tên báo ── */}
       <div className="flex items-center gap-3 mb-2">
@@ -67,12 +68,10 @@ const HeroCard: React.FC<HeroCardProps> = ({
         {/* Ảnh hero — kích thước cố định 370×208px */}
         <div className="col-span-10 overflow-hidden relative">
           <img
-            src={imageUrl || "https://picsum.photos/800/600?random=hero"}
+            src={resolveImageUrl(imageUrl, subCategory)}
             alt={title}
-            // Hiệu ứng: grayscale mặc định → full color khi hover, chuyển mượt 700ms
-            className="w-[370px] h-[208px] grayscale group-hover:grayscale-0 transition-all duration-700 object-cover"
-            // Fallback nếu URL ảnh không load được
-            onError={(e) => { (e.target as HTMLImageElement).src = "https://picsum.photos/800/600?random=hero"; }}
+            className="w-full h-[208px] grayscale group-hover:grayscale-0 transition-all duration-700 object-cover"
+            onError={makeOnError(subCategory)}
           />
         </div>
 

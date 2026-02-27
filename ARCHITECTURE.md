@@ -42,14 +42,15 @@ AFAD/
 │   │   └── BentoGrid.tsx             # Layout lưới chính — phân loại articles vào 4 cột, render grid
 │   ├── components/
 │   │   ├── cards/
-│   │   │   ├── ArticleCard.tsx       # Card bài báo thông thường
-│   │   │   └── HeroCard.tsx          # Card bài nổi bật (isFeatured) — chiếm 2 cột giữa
+│   │   │   ├── ArticleCard.tsx               # Card bài báo thông thường
+│   │   │   ├── HeroCard.tsx                  # Card bài nổi bật (isFeatured) — chiếm 2 cột giữa
+│   │   │   └── EmptyColumnPlaceholder.tsx    # Placeholder khi cột trống — card ngủ hoặc quote editorial
 │   │   ├── popups/
 │   │   │   ├── SearchPopup.tsx       # Popup nhập mã cổ phiếu — validate + trigger fetch API
 │   │   │   └── SpecterPopup.tsx      # Popup giải thích Specter
 │   │   └── widgets/
 │   │       ├── Calendar.tsx          # Widget lịch
-│   │       ├── Porfolio.tsx          # Widget danh mục đầu tư
+│   │       ├── Porfolio.tsx          # Widget danh mục đầu tư — button tự giãn, trải từ phải sang trái
 │   │       └── SearchBar.tsx         # Thanh search trong sidebar — mở SearchPopup
 │
 └── server/
@@ -108,6 +109,9 @@ AFAD/
                     │  heroArticle = isFeatured ?? ruiRo[0] ?? null
                     │  HeroCard chỉ render khi có bài RỦI RO
                     │  ruiRo.filter(!isFeatured) → render ArticleCard ở cột 4
+                    │  Mỗi cột hiển thị tối đa MAX_VISIBLE=3 bài
+                    │  Cột trống → EmptyColumnPlaceholder (card ngủ hoặc quote)
+                    │  Cột >3 bài → nút "+ X tin khác" / "↑ Thu gọn"
                     ▼
                 Grid 5 cột hiển thị tin tức thật
 ```
@@ -307,7 +311,9 @@ stocks/                    ← collection
 
 ---
 
-## 11. UI — Banner thông báo
+## 11. UI — Các trạng thái hiển thị
+
+### Banner thông báo
 
 Tất cả banner nằm trong wrapper `width: 1316px` (khớp với grid) để không bị co dãn theo viewport khi màn hình nhỏ hơn grid.
 
@@ -316,6 +322,25 @@ Tất cả banner nằm trong wrapper `width: 1316px` (khớp với grid) để 
 | `loading` | Overlay trắng mờ toàn màn hình + spinner cam + text "Đang tải dữ liệu..." |
 | `error` | Banner đỏ nhạt: "⚠ Lỗi: [message]" + "Vui lòng thử lại" |
 | `success` + `articles.length === 0` | Banner cam đậm: badge ticker trắng + "Không tìm thấy tin tức nào cho mã [XYZ]" + "Hãy thử mã khác" |
+
+### Cột trống — EmptyColumnPlaceholder
+
+Khi `fetchState.status === "success"` nhưng một category không có bài nào:
+
+| Tình huống | Hiển thị |
+|---|---|
+| Firestore có bài cũ của category đó | **Card ngủ**: opacity 45%, border dashed, ảnh grayscale, badge "TIN CŨ NHẤT" + timestamp. Hover: opacity → 70%, ảnh → màu thật, nút đen — transition 700ms |
+| Firestore không có gì | **Quote editorial**: dải màu accent theo category + câu quote rotate theo ngày (seed = dayOfYear, cố định trong ngày) + label "CATEGORY · Chưa có tin mới" |
+
+Màu accent theo category: CÂN ĐỐI → xám, TĂNG TRƯỞNG → xanh lá, RỦI RO → đỏ, DIỄN BIẾN GIÁ → xanh dương.
+
+### Giới hạn bài & expand/collapse
+
+- Mỗi cột hiển thị tối đa `MAX_VISIBLE = 3` bài (hằng số trong `BentoGrid.tsx`).
+- Nếu cột có > 3 bài → hiện nút **"+ X tin khác"** cuối cột (border dashed, text xám).
+- Click nút → expand toàn bộ, nút đổi thành **"↑ Thu gọn"**.
+- State expand/collapse (`expanded`) nằm trong `BentoGrid`, riêng biệt cho từng cột (canDoi, tangTruong, dienBienGia, ruiRo).
+- State **không reset** khi search ticker mới — giữ nguyên expand state giữa các lần search.
 
 ---
 
@@ -342,6 +367,9 @@ Tất cả banner nằm trong wrapper `width: 1316px` (khớp với grid) để 
 - **Title clean**: Chỉ cắt đuôi " - Tên Báo" khi khớp chính xác với `source`.
 - **Filter ticker chính xác**: Sau khi parse RSS, lọc bài theo `\bTICKER\b` trong title/URL — tránh nhầm mã (VD: "VCL" không nhận bài chứa "VLC").
 - **HeroCard chỉ hiện khi có RỦI RO**: Không fallback sang bài bất kỳ — `heroArticle = isFeatured ?? ruiRo[0] ?? null`.
+- **EmptyColumnPlaceholder**: Chỉ render khi `fetchState.status === "success"` — không hiện lúc idle hay loading.
+- **MAX_VISIBLE = 3**: Hằng số trong `BentoGrid.tsx` — đổi 1 chỗ áp dụng cho tất cả 4 cột.
+- **Portfolio button**: `flex-1 min-w-[calc(50%-4px)]` — button tự giãn hết hàng, 2 mã/hàng, không bao giờ có khoảng trắng thừa. Mã mới thêm vào xuất hiện góc phải trên (reverse + flex-wrap-reverse).
 - **Không dùng Express**: Server là `http.createServer` thuần.
 - **CORS**: Set `*` — chỉ phù hợp dev. Production nên lock lại domain cụ thể.
 - **Không có mock data**: Client không dùng dữ liệu giả. Grid hiển thị rỗng cho đến khi user search ticker đầu tiên.
@@ -364,8 +392,12 @@ Tất cả banner nằm trong wrapper `width: 1316px` (khớp với grid) để 
 | Thêm/sửa TypeScript types client | `client/src/types/article.ts` |
 | Sửa logic fetch API, xử lý lỗi, loading state | `client/src/hooks/useStockNews.ts` |
 | Sửa UI layout lưới chính, logic phân loại 4 cột, banner thông báo | `client/src/layout/BentoGrid.tsx` |
+| Đổi số bài tối đa hiển thị mỗi cột (mặc định 3) | `client/src/layout/BentoGrid.tsx` → `MAX_VISIBLE` |
 | Sửa card hiển thị bài báo thường | `client/src/components/cards/ArticleCard.tsx` |
 | Sửa card bài nổi bật (isFeatured) | `client/src/components/cards/HeroCard.tsx` |
+| Sửa placeholder khi cột trống (card ngủ / quote editorial) | `client/src/components/cards/EmptyColumnPlaceholder.tsx` |
+| Sửa quote pool theo từng category | `client/src/components/cards/EmptyColumnPlaceholder.tsx` → `QUOTES` |
+| Sửa layout / kích thước button danh mục đầu tư | `client/src/components/widgets/Porfolio.tsx` |
 | Sửa popup nhập ticker / validate / UX tìm kiếm | `client/src/components/popups/SearchPopup.tsx` |
 | Sửa Vite proxy (dev) hoặc thêm alias | `client/vite.config.ts` |
 

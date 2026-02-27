@@ -21,6 +21,7 @@ import SearchBar from '../components/widgets/SearchBar';
 import CalendarComponent from '../components/widgets/Calendar';
 import Portfolio from '../components/widgets/Porfolio';
 import HeroCard from '../components/cards/HeroCard';
+import EmptyColumnPlaceholder from '../components/cards/EmptyColumnPlaceholder';
 import SpecterPopup from '../components/popups/SpecterPopup';
 import type { FetchState, Article } from '../types/article';
 
@@ -43,16 +44,33 @@ function formatDate(iso: string) {
 
 // ── Props ──────────────────────────────────────────────────
 interface BentoGridProps {
-  fetchState: FetchState;              // Trạng thái fetch từ useStockNews (App.tsx)
-  onSearch: (ticker: string) => void;  // Callback khi user submit mã cổ phiếu
-  // onReset: () => void;              // TODO: thêm lại khi có nút "X" xoá kết quả
+  fetchState: FetchState;                        // Trạng thái fetch từ useStockNews (App.tsx)
+  onSearch: (ticker: string) => void;            // Callback khi user submit mã từ SearchBar
+  portfolio: string[];                           // Danh sách mã trong danh mục
+  activeTicker: string | null;                   // Mã đang được xem
+  onSelectTicker: (ticker: string) => void;      // Click mã trong Portfolio
+  onAddToPortfolio: (ticker: string) => void;    // Thêm mã mới vào portfolio
+  // onReset: () => void;                        // TODO: thêm lại khi có nút "X" xoá kết quả
 }
 
 
-const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // onReset chưa destructure — chờ có UI dùng
+const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch, portfolio, activeTicker, onSelectTicker, onAddToPortfolio }) => {
 
-  // ── State nội bộ: chỉ quản lý popup Specter ────────────
+  // ── State nội bộ ────────────────────────────────────────
   const [isSpecterOpen, setIsSpecterOpen] = useState(false);
+
+  // Expand/collapse từng cột — mặc định tất cả thu gọn (false)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    canDoi: false,
+    tangTruong: false,
+    dienBienGia: false,
+    ruiRo: false,
+  });
+
+  const toggleExpand = (col: string) =>
+    setExpanded(prev => ({ ...prev, [col]: !prev[col] }));
+
+  const MAX_VISIBLE = 2;
 
 
   // ── BƯỚC 1: Xác định nguồn dữ liệu ─────────────────────
@@ -153,23 +171,40 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // o
                 </div>
               </div>
 
-              {/* Danh sách bài CÂN ĐỐI — render tuần tự từ trên xuống */}
+              {/* Danh sách bài CÂN ĐỐI */}
               <div className="flex flex-col">
-                {canDoi.map((article, i) => {
-                  const { date, month } = formatDate(article.publishedAt);
-                  return (
-                    <ArticleCard
-                      key={article.url + i} // url làm key vì là unique identifier từ server
-                      date={date}
-                      month={month}
-                      source={article.source}
-                      subCategory={article.category}
-                      title={article.title}
-                      imageUrl={article.imageUrl}
-                      url={article.url}
-                    />
-                  );
-                })}
+                {canDoi.length === 0 && fetchState.status === "success" ? (
+                  <EmptyColumnPlaceholder
+                    category="CÂN ĐỐI"
+                    oldArticle={articles.filter(a => a.category === "CÂN ĐỐI")[0]}
+                  />
+                ) : (
+                  <>
+                    {(expanded.canDoi ? canDoi : canDoi.slice(0, MAX_VISIBLE)).map((article, i) => {
+                      const { date, month } = formatDate(article.publishedAt);
+                      return (
+                        <ArticleCard
+                          key={article.url + i}
+                          date={date}
+                          month={month}
+                          source={article.source}
+                          subCategory={article.category}
+                          title={article.title}
+                          imageUrl={article.imageUrl}
+                          url={article.url}
+                        />
+                      );
+                    })}
+                    {canDoi.length > MAX_VISIBLE && (
+                      <button
+                        onClick={() => toggleExpand('canDoi')}
+                        className="cursor-pointer w-full py-4 text-[10px] font-black uppercase tracking-widest border-b border-dashed text-gray-400 hover:text-black hover:bg-gray-50 transition-all duration-200"
+                      >
+                        {expanded.canDoi ? '↑ Thu gọn' : `+ ${canDoi.length - MAX_VISIBLE} tin khác`}
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -185,21 +220,38 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // o
               </div>
 
               <div className="flex flex-col">
-                {tangTruong.map((article, i) => {
-                  const { date, month } = formatDate(article.publishedAt);
-                  return (
-                    <ArticleCard
-                      key={article.url + i}
-                      date={date}
-                      month={month}
-                      source={article.source}
-                      subCategory={article.category}
-                      title={article.title}
-                      imageUrl={article.imageUrl}
-                      url={article.url}
-                    />
-                  );
-                })}
+                {tangTruong.length === 0 && fetchState.status === "success" ? (
+                  <EmptyColumnPlaceholder
+                    category="TĂNG TRƯỞNG"
+                    oldArticle={articles.filter(a => a.category === "TĂNG TRƯỞNG")[0]}
+                  />
+                ) : (
+                  <>
+                    {(expanded.tangTruong ? tangTruong : tangTruong.slice(0, MAX_VISIBLE)).map((article, i) => {
+                      const { date, month } = formatDate(article.publishedAt);
+                      return (
+                        <ArticleCard
+                          key={article.url + i}
+                          date={date}
+                          month={month}
+                          source={article.source}
+                          subCategory={article.category}
+                          title={article.title}
+                          imageUrl={article.imageUrl}
+                          url={article.url}
+                        />
+                      );
+                    })}
+                    {tangTruong.length > MAX_VISIBLE && (
+                      <button
+                        onClick={() => toggleExpand('tangTruong')}
+                        className="cursor-pointer w-full py-4 text-[10px] font-black uppercase tracking-widest border-b border-dashed text-gray-400 hover:text-black hover:bg-gray-50 transition-all duration-200"
+                      >
+                        {expanded.tangTruong ? '↑ Thu gọn' : `+ ${tangTruong.length - MAX_VISIBLE} tin khác`}
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -242,40 +294,74 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // o
 
                 {/* Cột 3: DIỄN BIẾN GIÁ */}
                 <div className="border-r border-black flex flex-col">
-                  {dienBienGia.map((article, i) => {
-                    const { date, month } = formatDate(article.publishedAt);
-                    return (
-                      <ArticleCard
-                        key={article.url + i}
-                        date={date}
-                        month={month}
-                        source={article.source}
-                        subCategory={article.category}
-                        title={article.title}
-                        imageUrl={article.imageUrl}
-                        url={article.url}
-                      />
-                    );
-                  })}
+                  {dienBienGia.length === 0 && fetchState.status === "success" ? (
+                    <EmptyColumnPlaceholder
+                      category="DIỄN BIẾN GIÁ"
+                      oldArticle={articles.filter(a => a.category === "DIỄN BIẾN GIÁ")[0]}
+                    />
+                  ) : (
+                    <>
+                      {(expanded.dienBienGia ? dienBienGia : dienBienGia.slice(0, MAX_VISIBLE)).map((article, i) => {
+                        const { date, month } = formatDate(article.publishedAt);
+                        return (
+                          <ArticleCard
+                            key={article.url + i}
+                            date={date}
+                            month={month}
+                            source={article.source}
+                            subCategory={article.category}
+                            title={article.title}
+                            imageUrl={article.imageUrl}
+                            url={article.url}
+                          />
+                        );
+                      })}
+                      {dienBienGia.length > MAX_VISIBLE && (
+                        <button
+                          onClick={() => toggleExpand('dienBienGia')}
+                          className="cursor-pointer w-full py-4 text-[10px] font-black uppercase tracking-widest border-b border-dashed text-gray-400 hover:text-black hover:bg-gray-50 transition-all duration-200"
+                        >
+                          {expanded.dienBienGia ? '↑ Thu gọn' : `+ ${dienBienGia.length - MAX_VISIBLE} tin khác`}
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 {/* Cột 4: RỦI RO — loại trừ bài isFeatured vì bài đó đã render ở HeroCard */}
                 <div className="flex flex-col border-r">
-                  {ruiRo.filter(a => !a.isFeatured).map((article, i) => {
-                    const { date, month } = formatDate(article.publishedAt);
-                    return (
-                      <ArticleCard
-                        key={article.url + i}
-                        date={date}
-                        month={month}
-                        source={article.source}
-                        subCategory={article.category}
-                        title={article.title}
-                        imageUrl={article.imageUrl}
-                        url={article.url}
-                      />
-                    );
-                  })}
+                  {ruiRo.filter(a => !a.isFeatured).length === 0 && fetchState.status === "success" ? (
+                    <EmptyColumnPlaceholder
+                      category="RỦI RO"
+                      oldArticle={articles.filter(a => a.category === "RỦI RO")[0]}
+                    />
+                  ) : (
+                    <>
+                      {(expanded.ruiRo ? ruiRo.filter(a => !a.isFeatured) : ruiRo.filter(a => !a.isFeatured).slice(0, MAX_VISIBLE)).map((article, i) => {
+                        const { date, month } = formatDate(article.publishedAt);
+                        return (
+                          <ArticleCard
+                            key={article.url + i}
+                            date={date}
+                            month={month}
+                            source={article.source}
+                            subCategory={article.category}
+                            title={article.title}
+                            imageUrl={article.imageUrl}
+                            url={article.url}
+                          />
+                        );
+                      })}
+                      {ruiRo.filter(a => !a.isFeatured).length > MAX_VISIBLE && (
+                        <button
+                          onClick={() => toggleExpand('ruiRo')}
+                          className="cursor-pointer w-full py-4 text-[10px] font-black uppercase tracking-widest border-b border-dashed text-gray-400 hover:text-black hover:bg-gray-50 transition-all duration-200"
+                        >
+                          {expanded.ruiRo ? '↑ Thu gọn' : `+ ${ruiRo.filter(a => !a.isFeatured).length - MAX_VISIBLE} tin khác`}
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -301,11 +387,15 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // o
 
               {/* SearchBar: nhận onSearch prop, khi user submit ticker sẽ gọi
                   fetchStock() trong useStockNews qua chuỗi: SearchBar → SearchPopup → App */}
-              <SearchBar onSearch={onSearch} />
+              <SearchBar onSearch={onSearch} onAddToPortfolio={onAddToPortfolio} />
 
-              {/* Widget lịch và danh mục — hiển thị thông tin tĩnh */}
+              {/* Widget lịch và danh mục */}
               <CalendarComponent />
-              <Portfolio />
+              <Portfolio
+                tickers={portfolio}
+                activeTicker={activeTicker}
+                onSelect={onSelectTicker}
+              />
             </div>
 
           </div>{/* end grid */}

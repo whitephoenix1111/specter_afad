@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#1a1a2e"/>
+  <!-- Grid nền tối -->
+  <line x1="0" y1="150" x2="800" y2="150" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <line x1="0" y1="300" x2="800" y2="300" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <line x1="0" y1="450" x2="800" y2="450" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <line x1="160" y1="0" x2="160" y2="600" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <line x1="320" y1="0" x2="320" y2="600" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <line x1="480" y1="0" x2="480" y2="600" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <line x1="640" y1="0" x2="640" y2="600" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+  <!-- Candlestick chart — nến Nhật -->
+  <!-- Nến xanh tăng -->
+  <line x1="120" y1="200" x2="120" y2="380" stroke="#22c55e" stroke-width="1.5"/>
+  <rect x="105" y="240" width="30" height="100" rx="1" fill="#22c55e"/>
+  <line x1="200" y1="180" x2="200" y2="360" stroke="#22c55e" stroke-width="1.5"/>
+  <rect x="185" y="210" width="30" height="110" rx="1" fill="#22c55e"/>
+  <!-- Nến đỏ giảm -->
+  <line x1="280" y1="160" x2="280" y2="350" stroke="#ef4444" stroke-width="1.5"/>
+  <rect x="265" y="190" width="30" height="120" rx="1" fill="#ef4444"/>
+  <!-- Nến đỏ lớn — rủi ro chính -->
+  <line x1="360" y1="140" x2="360" y2="420" stroke="#ef4444" stroke-width="1.5"/>
+  <rect x="343" y="180" width="34" height="180" rx="1" fill="#ef4444"/>
+  <line x1="440" y1="200" x2="440" y2="430" stroke="#ef4444" stroke-width="1.5"/>
+  <rect x="425" y="240" width="30" height="140" rx="1" fill="#ef4444"/>
+  <!-- Nến nhỏ -->
+  <line x1="520" y1="280" x2="520" y2="430" stroke="#ef4444" stroke-width="1.5"/>
+  <rect x="505" y="310" width="30" height="90" rx="1" fill="#ef4444"/>
+  <line x1="600" y1="300" x2="600" y2="450" stroke="#22c55e" stroke-width="1.5"/>
+  <rect x="585" y="330" width="30" height="80" rx="1" fill="#22c55e"/>
+  <!-- Đường support bị phá vỡ -->
+  <line x1="80" y1="360" x2="340" y2="360" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6 3"/>
+  <line x1="340" y1="360" x2="720" y2="420" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 3" opacity="0.5"/>
+  <!-- Tam giác cảnh báo -->
+  <polygon points="690,80 730,150 650,150" fill="none" stroke="#ef4444" stroke-width="2"/>
+  <text x="705" y="135" font-family="sans-serif" font-size="18" font-weight="bold" fill="#ef4444">!</text>
+  <!-- Label -->
+  <text x="80" y="75" font-family="sans-serif" font-size="13" font-weight="bold" fill="#94a3b8" letter-spacing="3">RỦI RO</text>
+  <text x="80" y="95" font-family="sans-serif" font-size="11" fill="#64748b">Tín hiệu cảnh báo</text>
+</svg>
