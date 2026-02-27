@@ -76,22 +76,20 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // o
 
 
   // ── BƯỚC 3: Xác định bài hero ───────────────────────────
-  // Ưu tiên theo thứ tự:
+  // Chỉ hiện HeroCard khi có bài RỦI RO:
   //   1. Bài có isFeatured = true (do AI chọn, đúng 1 bài trong toàn mảng)
-  //   2. Nếu không có → lấy bài RỦI RO đầu tiên
-  //   3. Nếu không có bài RỦI RO → lấy bài đầu tiên bất kỳ
-  //   4. Mảng rỗng → null → HeroCard không render
+  //   2. Nếu không có isFeatured → lấy bài RỦI RO đầu tiên
+  //   3. Không có bài RỦI RO nào → null → HeroCard không render
   const heroArticle =
     articles.find(a => a.isFeatured) ??
     ruiRo[0] ??
-    articles[0] ??
     null;
 
 
   // ── BƯỚC 4: Render ──────────────────────────────────────
   return (
     <>
-      <div className="max-w-8xl mx-auto">
+      <div className="max-w-8xl mx-auto ">
 
         {/* Loading Overlay: hiện khi đang chờ server (fetchState.status === "loading").
             fixed + inset-0 phủ toàn màn hình, z-50 đè lên grid.
@@ -105,157 +103,66 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // o
           </div>
         )}
 
-        {/* Error Banner: dải thông báo lỗi ngay trên đầu grid.
-            Hiện khi fetch thất bại, đồng thời grid vẫn hiển thị mock data bình thường.
-            Không dùng modal để tránh chặn toàn bộ UI. */}
-        {fetchState.status === "error" && (
-          <div className="w-full bg-red-50 border-b border-red-300 text-red-700 text-xs font-bold px-6 py-2 flex justify-between items-center">
-            <span>⚠ Lỗi: {fetchState.message}</span>
-            <span className="opacity-60">Đang hiển thị dữ liệu mẫu</span>
-          </div>
-        )}
-
         {/* ════════════════════════════════════════════════
             GRID CHÍNH: 5 cột
             repeat(4, 274px) = 4 cột nội dung × 274px
             220px            = 1 cột sidebar
             Tổng: 274×4 + 220 = 1316px
             ════════════════════════════════════════════════ */}
-        <div className="grid gap-0 border-l border-black" style={{ gridTemplateColumns: 'repeat(4, 274px) 220px' }}>
+        <div className="border-l  border-black" style={{ width: '1316px' }}>
 
-
-          {/* ╔══════════════════╗
-              ║  CỘT 1: CÂN ĐỐI  ║  274px
-              ╚══════════════════╝
-              Tin trung lập, thông tin nền tảng về công ty. */}
-          <div className="border-r border-black flex flex-col">
-
-            {/* Header cột — hiển thị ticker nếu đã search, ngược lại "Nền Tảng" */}
-            <div className="h-[70px] border-b border-black flex items-center justify-between font-bold text-xs uppercase">
-              <div className='w-[80px] h-full flex items-center justify-center border-r'>
-                <img className='w-[35px] h-[50px]' src={logo} alt="logo" />
-              </div>
-              <div className='pr-[30px]'>
-                {ticker ? `${ticker} · Nền Tảng` : "Nền Tảng"}
-              </div>
+          {/* Error Banner — khớp width với grid */}
+          {fetchState.status === "error" && (
+            <div className="w-full bg-red-50 border-b border-r border-black text-red-700 text-xs font-bold px-6 py-2 flex justify-between items-center">
+              <span>⚠ Lỗi: {fetchState.message}</span>
+              <span className="opacity-60">Vui lòng thử lại</span>
             </div>
+          )}
 
-            {/* Danh sách bài CÂN ĐỐI — render tuần tự từ trên xuống */}
-            <div className="flex flex-col">
-              {canDoi.map((article, i) => {
-                const { date, month } = formatDate(article.publishedAt);
-                return (
-                  <ArticleCard
-                    key={article.url + i} // url làm key vì là unique identifier từ server
-                    date={date}
-                    month={month}
-                    category="TIN TỨC"
-                    subCategory={article.category}
-                    title={article.title}
-                    imageUrl={article.imageUrl}
-                    url={article.url}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-
-          {/* ╔══════════════════════╗
-              ║  CỘT 2: TĂNG TRƯỞNG  ║  274px
-              ╚══════════════════════╝
-              Tin tích cực, triển vọng tăng trưởng. */}
-          <div className="border-r border-black flex flex-col">
-
-            <div className="w-full h-[70px] border-b border-black flex items-center justify-end font-bold text-xs uppercase">
-              <div className='pr-[30px]'>Tăng trưởng</div>
-            </div>
-
-            <div className="flex flex-col">
-              {tangTruong.map((article, i) => {
-                const { date, month } = formatDate(article.publishedAt);
-                return (
-                  <ArticleCard
-                    key={article.url + i}
-                    date={date}
-                    month={month}
-                    category="TIN TỨC"
-                    subCategory={article.category}
-                    title={article.title}
-                    imageUrl={article.imageUrl}
-                    url={article.url}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-
-          {/* ╔═══════════════════════════════════════════════╗
-              ║  CỘT 3+4: DIỄN BIẾN GIÁ + RỦI RO (col-span-2) ║  548px
-              ╚═══════════════════════════════════════════════╝
-              Hai cột ghép lại, chia sẻ một HeroCard phía trên chiếm hết 548px.
-              Phía dưới HeroCard mới tách lại thành 2 cột riêng biệt 274px. */}
-          <div className="col-span-2 border-r border-black flex flex-col">
-
-            {/* Header kép: 2 tiêu đề nằm cạnh nhau trong grid 274+274 */}
-            <div className="grid border-b border-black h-[70px]" style={{ gridTemplateColumns: '274px 274px' }}>
-              <div className="border-r border-black flex items-center justify-end font-bold text-xs uppercase">
-                <div className='pr-[30px]'>Diễn biến thị trường</div>
+          {/* Empty state — khớp width với grid */}
+          {fetchState.status === "success" && articles.length === 0 && (
+            <div className="w-full border-b border-r border-black bg-[#E67E22] text-white text-xs font-bold px-8 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-white/60 uppercase tracking-widest">Kết quả tìm kiếm</span>
+                <span className="text-white/40">·</span>
+                <span>Không tìm thấy tin tức nào cho mã</span>
+                <span className="bg-white text-[#E67E22] px-2 py-0.5 rounded-sm font-black tracking-wider">
+                  {fetchState.data.ticker}
+                </span>
               </div>
-              <div className="flex items-center justify-end font-bold text-xs uppercase">
-                <div className='pr-[30px]'>Biến động rủi ro</div>
-              </div>
+              <span className="text-white/70 uppercase tracking-widest">Hãy thử mã khác</span>
             </div>
+          )}
 
-            {/* HeroCard: chiếm toàn bộ 548px, chỉ render khi có bài được chọn */}
-            {heroArticle && (
-              <div className="border-b border-black">
-                <HeroCard
-                  date={formatDate(heroArticle.publishedAt).date}
-                  month={formatDate(heroArticle.publishedAt).month}
-                  category="TIN TỨC"
-                  subCategory={heroArticle.category}
-                  title={heroArticle.title}
-                  imageUrl={heroArticle.imageUrl}
-                  description={heroArticle.summary ?? ""} // summary chỉ có khi isFeatured
-                  url={heroArticle.url}
-                />
+          <div className="grid gap-0" style={{ gridTemplateColumns: 'repeat(4, 274px) 220px' }}>
+
+
+            {/* ╔══════════════════╗
+                ║  CỘT 1: CÂN ĐỐI  ║  274px
+                ╚══════════════════╝
+                Tin trung lập, thông tin nền tảng về công ty. */}
+            <div className="border-r border-black flex flex-col">
+
+              {/* Header cột — hiển thị ticker nếu đã search, ngược lại "Cân Đối" */}
+              <div className="h-[70px] border-b border-black flex items-center justify-between font-bold text-xs uppercase">
+                <div className='w-[80px] h-full flex items-center justify-center border-r'>
+                  <img className='w-[35px] h-[50px]' src={logo} alt="logo" />
+                </div>
+                <div className='pr-[30px]'>
+                  {ticker ? `${ticker} · Cân Đối` : "Cân Đối"}
+                </div>
               </div>
-            )}
 
-            {/* Phần dưới HeroCard: tách lại thành 2 cột riêng */}
-            <div className="grid flex-1" style={{ gridTemplateColumns: '274px 274px' }}>
-
-              {/* Cột 3: DIỄN BIẾN GIÁ */}
-              <div className="border-r border-black flex flex-col">
-                {dienBienGia.map((article, i) => {
+              {/* Danh sách bài CÂN ĐỐI — render tuần tự từ trên xuống */}
+              <div className="flex flex-col">
+                {canDoi.map((article, i) => {
                   const { date, month } = formatDate(article.publishedAt);
                   return (
                     <ArticleCard
-                      key={article.url + i}
+                      key={article.url + i} // url làm key vì là unique identifier từ server
                       date={date}
                       month={month}
-                      category="TIN TỨC"
-                      subCategory={article.category}
-                      title={article.title}
-                      imageUrl={article.imageUrl}
-                      url={article.url}
-                    />
-                  );
-                })}
-              </div>
-
-              {/* Cột 4: RỦI RO — loại trừ bài isFeatured vì bài đó đã render ở HeroCard */}
-              <div className="flex flex-col border-r">
-                {ruiRo.filter(a => !a.isFeatured).map((article, i) => {
-                  const { date, month } = formatDate(article.publishedAt);
-                  return (
-                    <ArticleCard
-                      key={article.url + i}
-                      date={date}
-                      month={month}
-                      category="TIN TỨC"
+                      source={article.source}
                       subCategory={article.category}
                       title={article.title}
                       imageUrl={article.imageUrl}
@@ -265,37 +172,144 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch }) => { // o
                 })}
               </div>
             </div>
-          </div>
 
 
-          {/* ╔═══════════╗
-              ║  SIDEBAR  ║  220px
-              ╚═══════════╝
-              Cột phải: nút Specter + SearchBar + Calendar + Portfolio.
-              SearchBar là nơi duy nhất user tương tác để trigger fetch API. */}
-          <div className="border-r border-black flex flex-col">
+            {/* ╔══════════════════════╗
+                ║  CỘT 2: TĂNG TRƯỞNG  ║  274px
+                ╚══════════════════════╝
+                Tin tích cực, triển vọng tăng trưởng. */}
+            <div className="border-r border-black flex flex-col">
 
-            {/* Header sidebar: nút mở popup giải thích Specter là gì */}
-            <div className="h-[70px] border-b border-black flex items-center justify-end font-bold text-xs">
-              <button
-                onClick={() => setIsSpecterOpen(true)}
-                className="border mx-[20px] py-1 flex items-center rounded-xs w-max cursor-pointer hover:bg-black hover:text-white transition-colors"
-              >
-                <BiBook size={24} className='ml-[10px]' />
-                <div className='pl-2 pr-4'>SPECTER LÀ GÌ?</div>
-              </button>
+              <div className="w-full h-[70px] border-b border-black flex items-center justify-end font-bold text-xs uppercase">
+                <div className='pr-[30px]'>Tăng trưởng</div>
+              </div>
+
+              <div className="flex flex-col">
+                {tangTruong.map((article, i) => {
+                  const { date, month } = formatDate(article.publishedAt);
+                  return (
+                    <ArticleCard
+                      key={article.url + i}
+                      date={date}
+                      month={month}
+                      source={article.source}
+                      subCategory={article.category}
+                      title={article.title}
+                      imageUrl={article.imageUrl}
+                      url={article.url}
+                    />
+                  );
+                })}
+              </div>
             </div>
 
-            {/* SearchBar: nhận onSearch prop, khi user submit ticker sẽ gọi
-                fetchStock() trong useStockNews qua chuỗi: SearchBar → SearchPopup → App */}
-            <SearchBar onSearch={onSearch} />
 
-            {/* Widget lịch và danh mục — hiển thị thông tin tĩnh */}
-            <CalendarComponent />
-            <Portfolio />
-          </div>
+            {/* ╔═══════════════════════════════════════════════╗
+                ║  CỘT 3+4: DIỄN BIẾN GIÁ + RỦI RO (col-span-2) ║  548px
+                ╚═══════════════════════════════════════════════╝
+                Hai cột ghép lại, chia sẻ một HeroCard phía trên chiếm hết 548px.
+                Phía dưới HeroCard mới tách lại thành 2 cột riêng biệt 274px. */}
+            <div className="col-span-2 border-r border-black flex flex-col">
 
-        </div>{/* end grid */}
+              {/* Header kép: 2 tiêu đề nằm cạnh nhau trong grid 274+274 */}
+              <div className="grid border-b border-black h-[70px]" style={{ gridTemplateColumns: '274px 274px' }}>
+                <div className="border-r border-black flex items-center justify-end font-bold text-xs uppercase">
+                  <div className='pr-[30px]'>Diễn biến giá</div>
+                </div>
+                <div className="flex items-center justify-end font-bold text-xs uppercase">
+                  <div className='pr-[30px]'>Rủi ro</div>
+                </div>
+              </div>
+
+              {/* HeroCard: chiếm toàn bộ 548px, chỉ render khi có bài được chọn */}
+              {heroArticle && (
+                <div className="border-b border-black">
+                  <HeroCard
+                    date={formatDate(heroArticle.publishedAt).date}
+                    month={formatDate(heroArticle.publishedAt).month}
+                    source={heroArticle.source}
+                    subCategory={heroArticle.category}
+                    title={heroArticle.title}
+                    imageUrl={heroArticle.imageUrl}
+                    description={heroArticle.summary ?? ""} // summary chỉ có khi isFeatured
+                    url={heroArticle.url}
+                  />
+                </div>
+              )}
+
+              {/* Phần dưới HeroCard: tách lại thành 2 cột riêng */}
+              <div className="grid flex-1" style={{ gridTemplateColumns: '274px 274px' }}>
+
+                {/* Cột 3: DIỄN BIẾN GIÁ */}
+                <div className="border-r border-black flex flex-col">
+                  {dienBienGia.map((article, i) => {
+                    const { date, month } = formatDate(article.publishedAt);
+                    return (
+                      <ArticleCard
+                        key={article.url + i}
+                        date={date}
+                        month={month}
+                        source={article.source}
+                        subCategory={article.category}
+                        title={article.title}
+                        imageUrl={article.imageUrl}
+                        url={article.url}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Cột 4: RỦI RO — loại trừ bài isFeatured vì bài đó đã render ở HeroCard */}
+                <div className="flex flex-col border-r">
+                  {ruiRo.filter(a => !a.isFeatured).map((article, i) => {
+                    const { date, month } = formatDate(article.publishedAt);
+                    return (
+                      <ArticleCard
+                        key={article.url + i}
+                        date={date}
+                        month={month}
+                        source={article.source}
+                        subCategory={article.category}
+                        title={article.title}
+                        imageUrl={article.imageUrl}
+                        url={article.url}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+
+            {/* ╔═══════════╗
+                ║  SIDEBAR  ║  220px
+                ╚═══════════╝
+                Cột phải: nút Specter + SearchBar + Calendar + Portfolio.
+                SearchBar là nơi duy nhất user tương tác để trigger fetch API. */}
+            <div className="flex flex-col border-r">
+
+              {/* Header sidebar: nút mở popup giải thích Specter là gì */}
+              <div className="h-[70px] border-b  border-black flex items-center justify-end font-bold text-xs">
+                <button
+                  onClick={() => setIsSpecterOpen(true)}
+                  className="border mx-[20px] py-1 flex items-center rounded-xs w-max cursor-pointer hover:bg-black hover:text-white transition-colors"
+                >
+                  <BiBook size={24} className='ml-[10px]' />
+                  <div className='pl-2 pr-4'>SPECTER LÀ GÌ?</div>
+                </button>
+              </div>
+
+              {/* SearchBar: nhận onSearch prop, khi user submit ticker sẽ gọi
+                  fetchStock() trong useStockNews qua chuỗi: SearchBar → SearchPopup → App */}
+              <SearchBar onSearch={onSearch} />
+
+              {/* Widget lịch và danh mục — hiển thị thông tin tĩnh */}
+              <CalendarComponent />
+              <Portfolio />
+            </div>
+
+          </div>{/* end grid */}
+        </div>{/* end wrapper 1316px */}
       </div>
 
       {/* Popup giải thích Specter — nằm ngoài grid để fixed/absolute không bị clip */}

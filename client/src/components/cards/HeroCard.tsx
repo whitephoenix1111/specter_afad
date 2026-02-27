@@ -20,7 +20,7 @@ import React from 'react';
 interface HeroCardProps {
   date: string;         // Ngày đăng — đã format ("19")
   month: string;        // Tháng đăng — đã format ("Tháng 9")
-  category: string;     // Nhóm lớn — luôn là "TIN TỨC"
+  source: string;       // Tên báo nguồn (VD: "VnExpress", "CafeF") — hiển thị màu cam
   subCategory: string;  // Nhóm con — thường là "RỦI RO"
   title: string;        // Tiêu đề bài báo
   imageUrl: string;     // URL ảnh Cloudinary hoặc RSS
@@ -32,7 +32,7 @@ interface HeroCardProps {
 const HeroCard: React.FC<HeroCardProps> = ({
   date,
   month,
-  category,
+  source,
   subCategory,
   title,
   imageUrl,
@@ -43,7 +43,7 @@ const HeroCard: React.FC<HeroCardProps> = ({
     // group: kích hoạt group-hover để ảnh chuyển từ grayscale sang màu khi hover toàn card
     <article className="group flex flex-col w-full bg-white pr-[30px] pl-[60px] py-[40px]">
 
-      {/* ── HEADER: Ngày + tag — giống hệt ArticleCard để nhất quán thị giác ── */}
+      {/* ── HEADER: Ngày + tên báo ── */}
       <div className="flex items-center gap-3 mb-2">
         <div className="bg-[#E67E22] text-white w-10 h-10 flex items-center justify-center font-bold rounded shadow-sm shrink-0">
           {date}
@@ -51,10 +51,10 @@ const HeroCard: React.FC<HeroCardProps> = ({
         <div className="text-black font-bold text-[16px] leading-tight">{month}</div>
       </div>
 
-      {/* Tag nhóm */}
+      {/* Tag nhóm: source màu cam / subCategory màu đen */}
       <div className="flex flex-col uppercase tracking-wider mb-4">
         <div className="text-[10px] mt-1 font-bold">
-          <span className="text-[#E67E22]">{category}</span>
+          <span className="text-[#E67E22]">{source || "---"}</span>
           <span className="text-gray-400 mx-1">/</span>
           <span className="text-black">{subCategory}</span>
         </div>
@@ -78,7 +78,7 @@ const HeroCard: React.FC<HeroCardProps> = ({
 
         {/* Tiêu đề nằm dọc bên phải ảnh — font lớn, break-words tránh tràn */}
         <div className="col-span-2">
-          <h2 className="text-[24px] font-extrabold leading-tight text-black break-words">
+          <h2 className="text-[24px] font-extrabold leading-tight text-black break-keep hyphens-none line-clamp-7 overflow-hidden">
             {title}
           </h2>
         </div>
@@ -91,7 +91,7 @@ const HeroCard: React.FC<HeroCardProps> = ({
         {/* Đoạn tóm tắt ~50 từ do Groq sinh ra (article.summary).
             Nếu bài không có summary (fallback sang bài không phải isFeatured),
             hiển thị text mặc định thay vì để trống. */}
-        <p className="text-gray-600 text-sm max-w-xl leading-relaxed">
+        <p className="text-gray-600 text-sm max-w-xl leading-relaxed mb-auto">
           {description || "Bài báo nổi bật về rủi ro đáng chú ý nhất."}
         </p>
 

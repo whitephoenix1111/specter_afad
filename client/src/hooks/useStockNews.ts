@@ -6,10 +6,6 @@
 //   1. Giữ trạng thái fetch (FetchState) trong React state
 //   2. Cung cấp hàm fetchStock(ticker) để component gọi
 //   3. Cung cấp hàm reset() để quay về trạng thái idle
-//
-// Tại sao tách ra hook riêng thay vì để thẳng trong component?
-// → Giữ component (BentoGrid, App) thuần UI, không lẫn lộn logic mạng.
-// → Dễ test, dễ tái sử dụng nếu sau này có thêm trang khác.
 // ============================================================
 
 import { useState, useCallback } from "react";

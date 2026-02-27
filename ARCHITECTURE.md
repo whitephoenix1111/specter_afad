@@ -45,7 +45,7 @@ AFAD/
 │   │   │   ├── ArticleCard.tsx       # Card bài báo thông thường
 │   │   │   └── HeroCard.tsx          # Card bài nổi bật (isFeatured) — chiếm 2 cột giữa
 │   │   ├── popups/
-│   │   │   ├── SearchPopup.tsx       # Popup nhập mã cổ phiếu — trigger fetch API
+│   │   │   ├── SearchPopup.tsx       # Popup nhập mã cổ phiếu — validate + trigger fetch API
 │   │   │   └── SpecterPopup.tsx      # Popup giải thích Specter
 │   │   └── widgets/
 │   │       ├── Calendar.tsx          # Widget lịch
@@ -60,7 +60,7 @@ AFAD/
         ├── controllers/
         │   └── stock.controller.ts          # Orchestrator: pipeline + Firestore incremental update
         ├── services/
-        │   ├── news.service.ts              # Quét tin từ Google News RSS
+        │   ├── news.service.ts              # Quét tin từ Google News RSS + filter chính xác theo ticker
         │   ├── classify.service.ts          # Groq: phân loại + tìm bài nổi bật
         │   └── image.service.ts             # Lấy ảnh RSS / sinh AI → upload Cloudinary
         └── types/
@@ -75,7 +75,9 @@ AFAD/
 [User] gõ ticker vào SearchPopup → nhấn Enter / nút Send
     │
     ▼
-[SearchPopup] onSubmit(ticker)
+[SearchPopup] validate ticker: chỉ A-Z, 0-9, tối đa 4 ký tự (regex ^[A-Z0-9]{1,4}$)
+    │  Lỗi → hiện thông báo inline, không submit
+    │  OK  → onSubmit(ticker)
     │
     ▼
 [SearchBar] onSearch(ticker)
@@ -90,18 +92,24 @@ AFAD/
     │
     ├── Lỗi HTTP / network?
     │       setState({ status: "error", message })
-    │       → BentoGrid hiện error banner, grid hiển thị rỗng
+    │       → BentoGrid hiện error banner ("Vui lòng thử lại"), grid hiển thị rỗng
     │
     └── Thành công?
             setState({ status: "success", data })
             │
             ▼
         [BentoGrid] nhận articles[]
-            │  filter → canDoi / tangTruong / dienBienGia / ruiRo
-            │  find isFeatured → heroArticle (render HeroCard)
-            │  ruiRo.filter(!isFeatured) → render ArticleCard ở cột 4
-            ▼
-        Grid 5 cột hiển thị tin tức thật
+            │
+            ├── articles rỗng?
+            │       → hiện empty state banner ("Không tìm thấy tin tức nào cho mã XYZ")
+            │
+            └── có bài?
+                    │  filter → canDoi / tangTruong / dienBienGia / ruiRo
+                    │  heroArticle = isFeatured ?? ruiRo[0] ?? null
+                    │  HeroCard chỉ render khi có bài RỦI RO
+                    │  ruiRo.filter(!isFeatured) → render ArticleCard ở cột 4
+                    ▼
+                Grid 5 cột hiển thị tin tức thật
 ```
 
 ---
@@ -126,7 +134,9 @@ AFAD/
     │  Làm sạch title: bỏ đuôi " - Tên Báo" NẾU đuôi đó khớp chính xác với source
     │  Tìm ảnh: <media:content url="..."> → imageUrl (undefined nếu không có)
     │  Resolve URL song song (GET trước, HEAD fallback, timeout 5s mỗi cái)
-    │  Return: NewsArticle[] (tối đa 10 bài, URL đã resolve)
+    │  Filter chính xác: chỉ giữ bài có chứa đúng ticker (\bVIC\b) trong title hoặc URL
+    │  → Tránh trường hợp tìm "VCL" nhưng nhận về bài chứa "VLC"
+    │  Return: NewsArticle[] (tối đa 10 bài, đã filter, URL đã resolve)
     │
     ▼  Lọc bài mới: rawArticles.filter(a => !existingUrls.has(a.url))
     │
@@ -195,14 +205,16 @@ AFAD/
 | Type / Interface | Mô tả | Dùng ở đâu |
 |---|---|---|
 | `NewsCategory` | Giống server — phải khớp chính xác từng ký tự | BentoGrid filter, ArticleCard |
-| `Article` | Khớp với `CategorizedArticle` server: title, url, source, publishedAt, imageUrl, category, isFeatured?, summary? | BentoGrid, HeroCard, ArticleCard |
+| `Article` | Khớp với `CategorizedArticle` server: title, url, **source**, publishedAt, imageUrl, category, isFeatured?, summary? | BentoGrid, HeroCard, ArticleCard |
 | `StockApiResponse` | Shape JSON server trả về: `{ success, fromCache, data: { ticker, articles[], cachedAt } }` | useStockNews |
 | `FetchState` | Discriminated union: idle / loading / success(data) / error(message) | useStockNews → App → BentoGrid |
 
-### Ghi chú về `isFeatured` và `summary`
+### Ghi chú về `source`, `isFeatured` và `summary`
+- `source` là tên báo nguồn (VD: "VnExpress", "CafeF") — hiển thị màu cam ở vị trí tag nhóm trong card, thay thế hardcode `"TIN TỨC"` cũ.
+- Tag nhóm trong card hiển thị dạng `SOURCE / SUBCATEGORY` — source màu cam, category màu đen.
 - Chỉ **đúng 1 bài** trong toàn bộ mảng có `isFeatured: true` — bài RỦI RO nghiêm trọng nhất.
 - `summary` là đoạn standfirst ~50 từ kiểu báo tài chính, chỉ có khi `isFeatured = true`.
-- BentoGrid dùng `articles.find(a => a.isFeatured)` để chọn bài render HeroCard.
+- HeroCard **chỉ render khi có bài RỦI RO** — không fallback sang bài bất kỳ.
 - Cột 4 (RỦI RO) render `ruiRo.filter(a => !a.isFeatured)` — loại trừ bài đã lên HeroCard.
 
 ---
@@ -295,7 +307,28 @@ stocks/                    ← collection
 
 ---
 
-## 11. Quy tắc quan trọng cần nhớ
+## 11. UI — Banner thông báo
+
+Tất cả banner nằm trong wrapper `width: 1316px` (khớp với grid) để không bị co dãn theo viewport khi màn hình nhỏ hơn grid.
+
+| Trạng thái | Hiển thị |
+|---|---|
+| `loading` | Overlay trắng mờ toàn màn hình + spinner cam + text "Đang tải dữ liệu..." |
+| `error` | Banner đỏ nhạt: "⚠ Lỗi: [message]" + "Vui lòng thử lại" |
+| `success` + `articles.length === 0` | Banner cam đậm: badge ticker trắng + "Không tìm thấy tin tức nào cho mã [XYZ]" + "Hãy thử mã khác" |
+
+---
+
+## 12. Validate input — SearchPopup
+
+- Regex: `^[A-Z0-9]{1,4}$` — chỉ chấp nhận chữ cái A-Z và số 0-9, tối đa 4 ký tự.
+- Ký tự đặc biệt (`@`, `#`, `-`, `/`...) bị chặn, hiện thông báo lỗi inline trong popup.
+- Lỗi tự xóa khi user bắt đầu gõ lại.
+- Input tự động uppercase khi gõ.
+
+---
+
+## 13. Quy tắc quan trọng cần nhớ
 
 - **Incremental update**: Chỉ xử lý bài chưa có trong Firestore — so sánh qua `url`. Không có bài mới → không tốn quota Groq/HuggingFace.
 - **Firestore là nguồn duy nhất**: Không còn in-memory cache. Data persist qua restart server.
@@ -307,6 +340,8 @@ stocks/                    ← collection
 - **Image song song**: `Promise.all` cho tất cả bài — lỗi 1 bài không chặn bài khác.
 - **URL resolve**: Google News RSS trả redirect link → thử GET trước, HEAD fallback, timeout 5s.
 - **Title clean**: Chỉ cắt đuôi " - Tên Báo" khi khớp chính xác với `source`.
+- **Filter ticker chính xác**: Sau khi parse RSS, lọc bài theo `\bTICKER\b` trong title/URL — tránh nhầm mã (VD: "VCL" không nhận bài chứa "VLC").
+- **HeroCard chỉ hiện khi có RỦI RO**: Không fallback sang bài bất kỳ — `heroArticle = isFeatured ?? ruiRo[0] ?? null`.
 - **Không dùng Express**: Server là `http.createServer` thuần.
 - **CORS**: Set `*` — chỉ phù hợp dev. Production nên lock lại domain cụ thể.
 - **Không có mock data**: Client không dùng dữ liệu giả. Grid hiển thị rỗng cho đến khi user search ticker đầu tiên.
@@ -314,13 +349,13 @@ stocks/                    ← collection
 
 ---
 
-## 12. Khi cần sửa — vào file nào?
+## 14. Khi cần sửa — vào file nào?
 
 | Việc cần làm | File cần mở |
 |---|---|
 | Thêm/sửa route API | `server/src/index.ts` |
 | Thay đổi logic incremental update, số bài tối đa (MAX_ARTICLES_STORED) | `server/src/controllers/stock.controller.ts` |
-| Thay đổi query RSS, số bài tối đa từ RSS, logic resolve URL | `server/src/services/news.service.ts` |
+| Thay đổi query RSS, số bài tối đa từ RSS, logic resolve URL, filter ticker | `server/src/services/news.service.ts` |
 | Sửa prompt phân loại, thêm/bớt nhóm chủ đề | `server/src/services/classify.service.ts` → `classify()` |
 | Sửa logic chọn bài nổi bật hoặc nội dung summary | `server/src/services/classify.service.ts` → `findFeaturedRisk()` |
 | Đổi model sinh ảnh, sửa mood map theo category | `server/src/services/image.service.ts` |
@@ -328,15 +363,15 @@ stocks/                    ← collection
 | Thêm/sửa TypeScript types server | `server/src/types/stock.ts` |
 | Thêm/sửa TypeScript types client | `client/src/types/article.ts` |
 | Sửa logic fetch API, xử lý lỗi, loading state | `client/src/hooks/useStockNews.ts` |
-| Sửa UI layout lưới chính, logic phân loại 4 cột | `client/src/layout/BentoGrid.tsx` |
+| Sửa UI layout lưới chính, logic phân loại 4 cột, banner thông báo | `client/src/layout/BentoGrid.tsx` |
 | Sửa card hiển thị bài báo thường | `client/src/components/cards/ArticleCard.tsx` |
 | Sửa card bài nổi bật (isFeatured) | `client/src/components/cards/HeroCard.tsx` |
-| Sửa popup nhập ticker / UX tìm kiếm | `client/src/components/popups/SearchPopup.tsx` |
+| Sửa popup nhập ticker / validate / UX tìm kiếm | `client/src/components/popups/SearchPopup.tsx` |
 | Sửa Vite proxy (dev) hoặc thêm alias | `client/vite.config.ts` |
 
 ---
 
-## 13. Các API bên ngoài
+## 15. Các API bên ngoài
 
 | Service | Model / Endpoint | Ghi chú |
 |---|---|---|
@@ -348,7 +383,7 @@ stocks/                    ← collection
 
 ---
 
-## 14. Tổng số Groq calls mỗi request (worst case)
+## 16. Tổng số Groq calls mỗi request (worst case)
 
 | Call | Điều kiện | max_tokens |
 |---|---|---|
@@ -361,7 +396,7 @@ Best case: **0 Groq calls** (không có bài mới → trả thẳng từ Firest
 
 ---
 
-## 15. TODO — Việc còn lại
+## 17. TODO — Việc còn lại
 
 - [ ] **Cron job 5 phút**: Thêm `node-cron` để server tự động gọi pipeline cho các ticker đang theo dõi, không cần chờ client request.
 - [ ] **Client đọc Firestore real-time**: Thay `fetch('/api/stock/...')` bằng Firebase SDK + `onSnapshot` để UI tự update khi có tin mới.

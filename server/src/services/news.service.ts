@@ -156,8 +156,17 @@ export class NewsService {
     }
 
     const articles = await this.parseRss(xml);
-    console.log(`[News] Lấy được ${articles.length} bài cho ${ticker}`);
+    console.log(`[News] Lấy được ${articles.length} bài từ RSS cho ${ticker}`);
 
-    return articles;
+    // Filter chặt: chỉ giữ bài có chứa đúng ticker trong title hoặc URL.
+    // Google News RSS là full-text search nên "VCL" có thể trả về bài chứa "VLC".
+    // Dùng word boundary (\b) để tránh match từng phần: "VIC" không match trong "PVIC".
+    const tickerRegex = new RegExp(`\\b${ticker}\\b`, "i");
+    const filtered = articles.filter(
+      (a) => tickerRegex.test(a.title) || tickerRegex.test(a.url)
+    );
+
+    console.log(`[News] Còn ${filtered.length} bài sau khi filter chính xác theo "${ticker}"`);
+    return filtered;
   }
 }
