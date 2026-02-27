@@ -7,6 +7,11 @@
 //   2. Quản lý danh sách portfolio (lưu localStorage)
 //   3. Auto-fetch MBB khi mount lần đầu
 //   4. Truyền state + các hàm xuống BentoGrid
+//
+// Quy tắc portfolio:
+//   Mã chỉ được lưu vào localStorage khi fetch thành công VÀ có bài trả về.
+//   Việc này được xử lý hoàn toàn trong useEffect theo dõi state —
+//   không phụ thuộc vào SearchBar hay SearchPopup.
 // ============================================================
 
 import { useEffect, useState, useCallback } from "react";
@@ -45,7 +50,7 @@ function savePortfolio(tickers: string[]) {
 function App() {
 
   // ── Hook fetch ──────────────────────────────────────────────
-  const { state, fetchStock } = useStockNews();
+  const { state, fetchStock, reset } = useStockNews();
 
   // ── Portfolio state ─────────────────────────────────────────
   // Khởi tạo ngay từ localStorage — không cần useEffect để tránh flash
@@ -62,25 +67,28 @@ function App() {
   }, []); // chỉ chạy 1 lần khi mount
 
 
+  // ── Tự động lưu portfolio sau khi fetch thành công ──────────
+  // Đây là nơi DUY NHẤT quyết định có lưu mã vào localStorage không.
+  // Điều kiện: status === "success" VÀ có ít nhất 1 bài trả về.
+  // → Mã không tồn tại / không có tin sẽ không bao giờ được lưu.
+  useEffect(() => {
+    if (state.status === "success" && state.data.articles.length > 0) {
+      const ticker = state.data.ticker;
+      setPortfolio(prev => {
+        if (prev.includes(ticker)) return prev; // tránh re-render nếu đã có
+        const next = [...prev, ticker];
+        savePortfolio(next);
+        return next;
+      });
+    }
+  }, [state]);
+
+
   // ── Hàm chọn mã từ Portfolio ────────────────────────────────
   const handleSelectTicker = useCallback((ticker: string) => {
     setActiveTicker(ticker);
     fetchStock(ticker);
   }, [fetchStock]);
-
-
-  // ── Hàm thêm mã mới vào Portfolio ──────────────────────────
-  // Được gọi từ SearchPopup sau khi user submit ticker hợp lệ.
-  const handleAddToPortfolio = useCallback((ticker: string) => {
-    setPortfolio(prev => {
-      // Không thêm trùng
-      if (prev.includes(ticker)) return prev;
-      const next = [...prev, ticker];
-      savePortfolio(next);
-      return next;
-    });
-    setActiveTicker(ticker);
-  }, []);
 
 
   // ── Wrap fetchStock để cập nhật activeTicker đồng thời ──────
@@ -99,7 +107,7 @@ function App() {
       portfolio={portfolio}
       activeTicker={activeTicker}
       onSelectTicker={handleSelectTicker}
-      onAddToPortfolio={handleAddToPortfolio}
+      onReset={reset}
     />
   );
 }

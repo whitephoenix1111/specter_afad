@@ -33,13 +33,15 @@ Client (React)
 ```
 AFAD/
 ├── client/src/
-│   ├── App.tsx                       # Root component — khởi tạo useStockNews hook, truyền state xuống
+│   ├── App.tsx                       # Root component — useStockNews hook, portfolio localStorage, auto-fetch MBB
 │   ├── hooks/
 │   │   └── useStockNews.ts           # Custom hook — toàn bộ logic fetch API nằm ở đây
 │   ├── types/
 │   │   └── article.ts                # TypeScript types phía client (Article, FetchState, StockApiResponse)
 │   ├── layout/
 │   │   └── BentoGrid.tsx             # Layout lưới chính — phân loại articles vào 4 cột, render grid
+│   ├── utils/
+│   │   └── fallbackImage.ts          # resolveImageUrl() + makeOnError() — fallback SVG local khi imageUrl rỗng
 │   ├── components/
 │   │   ├── cards/
 │   │   │   ├── ArticleCard.tsx               # Card bài báo thông thường
@@ -55,6 +57,7 @@ AFAD/
 │
 └── server/
     ├── serviceAccountKey.json               # Firebase Admin credentials (KHÔNG commit git)
+    ├── public/                              # Static files (nếu có)
     └── src/
         ├── index.ts                         # HTTP server, định nghĩa routes
         ├── firebase.ts                      # Khởi tạo Firebase Admin + Cloudinary upload helper
@@ -84,7 +87,7 @@ AFAD/
 [SearchBar] onSearch(ticker)
     │
     ▼
-[App.tsx] fetchStock(ticker)          ← nhận từ useStockNews hook
+[App.tsx] handleSearch(ticker) → setActiveTicker + fetchStock(ticker)
     │
     ▼
 [useStockNews] fetch /api/stock/VIC
@@ -98,6 +101,9 @@ AFAD/
     └── Thành công?
             setState({ status: "success", data })
             │
+            ├── [App.tsx useEffect] articles.length > 0?
+            │       → lưu ticker vào portfolio localStorage (nếu chưa có)
+            │
             ▼
         [BentoGrid] nhận articles[]
             │
@@ -106,12 +112,12 @@ AFAD/
             │
             └── có bài?
                     │  filter → canDoi / tangTruong / dienBienGia / ruiRo
-                    │  heroArticle = isFeatured ?? ruiRo[0] ?? null
+                    │  heroArticle = articles.find(isFeatured) ?? ruiRo[0] ?? null
                     │  HeroCard chỉ render khi có bài RỦI RO
                     │  ruiRo.filter(!isFeatured) → render ArticleCard ở cột 4
-                    │  Mỗi cột hiển thị tối đa MAX_VISIBLE=3 bài
+                    │  Mỗi cột hiển thị tối đa MAX_VISIBLE=2 bài
                     │  Cột trống → EmptyColumnPlaceholder (card ngủ hoặc quote)
-                    │  Cột >3 bài → nút "+ X tin khác" / "↑ Thu gọn"
+                    │  Cột >2 bài → nút "+ X tin khác" / "↑ Thu gọn"
                     ▼
                 Grid 5 cột hiển thị tin tức thật
 ```
@@ -209,17 +215,18 @@ AFAD/
 | Type / Interface | Mô tả | Dùng ở đâu |
 |---|---|---|
 | `NewsCategory` | Giống server — phải khớp chính xác từng ký tự | BentoGrid filter, ArticleCard |
-| `Article` | Khớp với `CategorizedArticle` server: title, url, **source**, publishedAt, imageUrl, category, isFeatured?, summary? | BentoGrid, HeroCard, ArticleCard |
+| `Article` | Khớp với `CategorizedArticle` server: title, url, source, publishedAt, **imageUrl (string, bắt buộc)**, category, isFeatured?, summary? | BentoGrid, HeroCard, ArticleCard |
 | `StockApiResponse` | Shape JSON server trả về: `{ success, fromCache, data: { ticker, articles[], cachedAt } }` | useStockNews |
 | `FetchState` | Discriminated union: idle / loading / success(data) / error(message) | useStockNews → App → BentoGrid |
 
-### Ghi chú về `source`, `isFeatured` và `summary`
-- `source` là tên báo nguồn (VD: "VnExpress", "CafeF") — hiển thị màu cam ở vị trí tag nhóm trong card, thay thế hardcode `"TIN TỨC"` cũ.
+### Ghi chú về `source`, `isFeatured`, `summary` và `imageUrl`
+- `source` là tên báo nguồn (VD: "VnExpress", "CafeF") — hiển thị màu cam ở vị trí tag nhóm trong card.
 - Tag nhóm trong card hiển thị dạng `SOURCE / SUBCATEGORY` — source màu cam, category màu đen.
 - Chỉ **đúng 1 bài** trong toàn bộ mảng có `isFeatured: true` — bài RỦI RO nghiêm trọng nhất.
-- `summary` là đoạn standfirst ~50 từ kiểu báo tài chính, chỉ có khi `isFeatured = true`.
+- `summary` là đoạn standfirst ~50 từ do Groq sinh, chỉ có khi `isFeatured = true`.
 - HeroCard **chỉ render khi có bài RỦI RO** — không fallback sang bài bất kỳ.
 - Cột 4 (RỦI RO) render `ruiRo.filter(a => !a.isFeatured)` — loại trừ bài đã lên HeroCard.
+- `imageUrl` ở client type là **`string` bắt buộc** (không optional) — server luôn trả `""` khi lỗi thay vì `undefined`. Client dùng `fallbackImage.ts` để xử lý chuỗi rỗng.
 
 ---
 
@@ -246,6 +253,7 @@ Firebase Admin xác thực qua `server/serviceAccountKey.json` (không dùng .en
 | GET | `/health` | index.ts | Health check đơn giản |
 | * | `/*` | index.ts | 404 fallthrough |
 
+> Route regex thực tế: `/^\/api\/stock\/([A-Za-z.]+)$/` — cho phép chữ cái và dấu chấm (hỗ trợ mã kiểu `VN30`).  
 > Route `/images/:filename` đã bỏ — ảnh giờ lưu trên Cloudinary CDN, client dùng URL trực tiếp.
 
 ---
@@ -282,10 +290,15 @@ Bài báo từ RSS
                     │
                     ├── Thành công → upload Cloudinary (afad/VIC_0, overwrite=true)
                     │               trả https://res.cloudinary.com/...
-                    └── Lỗi → imageUrl = "" (client tự fallback UI)
+                    └── Lỗi → imageUrl = "" (client dùng fallbackImage.ts để xử lý)
 ```
 
-Mood map theo category:
+**Client-side fallback** (`client/src/utils/fallbackImage.ts`):
+- `resolveImageUrl(imageUrl, category)`: nếu `imageUrl` rỗng → trả đường dẫn SVG local theo category
+- `makeOnError(category)`: `onError` handler cho `<img>` — load SVG fallback nếu URL ảnh lỗi, tránh vòng lặp vô hạn
+- SVG fallback nằm tại `public/fallbacks/`: `can-doi.svg`, `tang-truong.svg`, `rui-ro.svg`, `dien-bien-gia.svg`
+
+Mood map theo category (dùng khi sinh ảnh AI):
 - `CÂN ĐỐI` → balanced scale, financial charts, calm blue tones
 - `TĂNG TRƯỞNG` → rising green arrows, cityscape, golden light
 - `RỦI RO` → stormy sky, red warnings, dark tones
@@ -311,17 +324,29 @@ stocks/                    ← collection
 
 ---
 
-## 11. UI — Các trạng thái hiển thị
+## 11. Portfolio — localStorage
+
+`App.tsx` quản lý danh sách ticker đã xem, lưu vào `localStorage` với key `"afad_portfolio"`.
+
+- **MBB là mã mặc định** — luôn có trong danh sách, auto-fetch khi app khởi động.
+- Mã chỉ được lưu vào portfolio khi fetch thành công **VÀ** server trả về ít nhất 1 bài.
+- Logic lưu nằm trong `useEffect` theo dõi `state` — hoàn toàn tách biệt khỏi SearchBar/SearchPopup.
+- `activeTicker`: ticker đang hiển thị — dùng để highlight nút active trong widget Portfolio.
+- Mã mới thêm vào xuất hiện góc phải trên (flex-wrap-reverse + reverse array).
+
+---
+
+## 12. UI — Các trạng thái hiển thị
 
 ### Banner thông báo
 
-Tất cả banner nằm trong wrapper `width: 1316px` (khớp với grid) để không bị co dãn theo viewport khi màn hình nhỏ hơn grid.
+Tất cả banner nằm trong wrapper `width: 1316px` (khớp với grid) để không bị co dãn theo viewport.
 
 | Trạng thái | Hiển thị |
 |---|---|
 | `loading` | Overlay trắng mờ toàn màn hình + spinner cam + text "Đang tải dữ liệu..." |
-| `error` | Banner đỏ nhạt: "⚠ Lỗi: [message]" + "Vui lòng thử lại" |
-| `success` + `articles.length === 0` | Banner cam đậm: badge ticker trắng + "Không tìm thấy tin tức nào cho mã [XYZ]" + "Hãy thử mã khác" |
+| `error` | Banner đỏ nhạt: "⚠ Lỗi: [message]" + "Vui lòng thử lại" + nút ✕ (gọi `onReset`) |
+| `success` + `articles.length === 0` | Banner cam đậm: badge ticker trắng + "Không tìm thấy tin tức nào cho mã [XYZ]" + "Hãy thử mã khác" + nút ✕ |
 
 ### Cột trống — EmptyColumnPlaceholder
 
@@ -332,28 +357,28 @@ Khi `fetchState.status === "success"` nhưng một category không có bài nào
 | Firestore có bài cũ của category đó | **Card ngủ**: opacity 45%, border dashed, ảnh grayscale, badge "TIN CŨ NHẤT" + timestamp. Hover: opacity → 70%, ảnh → màu thật, nút đen — transition 700ms |
 | Firestore không có gì | **Quote editorial**: dải màu accent theo category + câu quote rotate theo ngày (seed = dayOfYear, cố định trong ngày) + label "CATEGORY · Chưa có tin mới" |
 
-Màu accent theo category: CÂN ĐỐI → xám, TĂNG TRƯỞNG → xanh lá, RỦI RO → đỏ, DIỄN BIẾN GIÁ → xanh dương.
+Màu accent theo category: CÂN ĐỐI → xám (#6B7280), TĂNG TRƯỞNG → xanh lá (#16A34A), RỦI RO → đỏ (#DC2626), DIỄN BIẾN GIÁ → xanh dương (#2563EB).
 
 ### Giới hạn bài & expand/collapse
 
-- Mỗi cột hiển thị tối đa `MAX_VISIBLE = 3` bài (hằng số trong `BentoGrid.tsx`).
-- Nếu cột có > 3 bài → hiện nút **"+ X tin khác"** cuối cột (border dashed, text xám).
+- Mỗi cột hiển thị tối đa **`MAX_VISIBLE = 2`** bài (hằng số trong `BentoGrid.tsx`).
+- Nếu cột có > 2 bài → hiện nút **"+ X tin khác"** cuối cột (border dashed, text xám).
 - Click nút → expand toàn bộ, nút đổi thành **"↑ Thu gọn"**.
 - State expand/collapse (`expanded`) nằm trong `BentoGrid`, riêng biệt cho từng cột (canDoi, tangTruong, dienBienGia, ruiRo).
 - State **không reset** khi search ticker mới — giữ nguyên expand state giữa các lần search.
 
 ---
 
-## 12. Validate input — SearchPopup
+## 13. Validate input — SearchPopup
 
 - Regex: `^[A-Z0-9]{1,4}$` — chỉ chấp nhận chữ cái A-Z và số 0-9, tối đa 4 ký tự.
 - Ký tự đặc biệt (`@`, `#`, `-`, `/`...) bị chặn, hiện thông báo lỗi inline trong popup.
 - Lỗi tự xóa khi user bắt đầu gõ lại.
-- Input tự động uppercase khi gõ.
+- Input tự động uppercase khi gõ, `maxLength={4}` ở HTML level.
 
 ---
 
-## 13. Quy tắc quan trọng cần nhớ
+## 14. Quy tắc quan trọng cần nhớ
 
 - **Incremental update**: Chỉ xử lý bài chưa có trong Firestore — so sánh qua `url`. Không có bài mới → không tốn quota Groq/HuggingFace.
 - **Firestore là nguồn duy nhất**: Không còn in-memory cache. Data persist qua restart server.
@@ -365,19 +390,22 @@ Màu accent theo category: CÂN ĐỐI → xám, TĂNG TRƯỞNG → xanh lá, R
 - **Image song song**: `Promise.all` cho tất cả bài — lỗi 1 bài không chặn bài khác.
 - **URL resolve**: Google News RSS trả redirect link → thử GET trước, HEAD fallback, timeout 5s.
 - **Title clean**: Chỉ cắt đuôi " - Tên Báo" khi khớp chính xác với `source`.
-- **Filter ticker chính xác**: Sau khi parse RSS, lọc bài theo `\bTICKER\b` trong title/URL — tránh nhầm mã (VD: "VCL" không nhận bài chứa "VLC").
-- **HeroCard chỉ hiện khi có RỦI RO**: Không fallback sang bài bất kỳ — `heroArticle = isFeatured ?? ruiRo[0] ?? null`.
+- **Filter ticker chính xác**: Sau khi parse RSS, lọc bài theo `\bTICKER\b` trong title/URL — tránh nhầm mã.
+- **HeroCard chỉ hiện khi có RỦI RO**: `heroArticle = articles.find(a => a.isFeatured) ?? ruiRo[0] ?? null`.
 - **EmptyColumnPlaceholder**: Chỉ render khi `fetchState.status === "success"` — không hiện lúc idle hay loading.
-- **MAX_VISIBLE = 3**: Hằng số trong `BentoGrid.tsx` — đổi 1 chỗ áp dụng cho tất cả 4 cột.
-- **Portfolio button**: `flex-1 min-w-[calc(50%-4px)]` — button tự giãn hết hàng, 2 mã/hàng, không bao giờ có khoảng trắng thừa. Mã mới thêm vào xuất hiện góc phải trên (reverse + flex-wrap-reverse).
+- **MAX_VISIBLE = 2**: Hằng số trong `BentoGrid.tsx` — đổi 1 chỗ áp dụng cho tất cả 4 cột.
+- **imageUrl client = string bắt buộc**: Không phải optional. Server luôn trả `""` khi lỗi. `fallbackImage.ts` xử lý chuỗi rỗng → SVG local.
+- **Portfolio localStorage**: Lưu với key `"afad_portfolio"`. MBB là default. Chỉ lưu ticker khi fetch thành công VÀ có bài.
+- **Portfolio button**: `flex-1 min-w-[calc(50%-4px)]` — button tự giãn hết hàng, 2 mã/hàng. Mã mới xuất hiện góc phải trên.
 - **Không dùng Express**: Server là `http.createServer` thuần.
 - **CORS**: Set `*` — chỉ phù hợp dev. Production nên lock lại domain cụ thể.
 - **Không có mock data**: Client không dùng dữ liệu giả. Grid hiển thị rỗng cho đến khi user search ticker đầu tiên.
-- **State lifting**: `useStockNews` hook khởi tạo ở `App.tsx`, truyền xuống qua props — không nhốt trong BentoGrid để dễ mở rộng sau.
+- **State lifting**: `useStockNews` hook khởi tạo ở `App.tsx`, truyền xuống qua props.
+- **Auto-fetch MBB**: App.tsx tự gọi `fetchStock("MBB")` khi mount lần đầu (useEffect `[]`).
 
 ---
 
-## 14. Khi cần sửa — vào file nào?
+## 15. Khi cần sửa — vào file nào?
 
 | Việc cần làm | File cần mở |
 |---|---|
@@ -391,8 +419,10 @@ Màu accent theo category: CÂN ĐỐI → xám, TĂNG TRƯỞNG → xanh lá, R
 | Thêm/sửa TypeScript types server | `server/src/types/stock.ts` |
 | Thêm/sửa TypeScript types client | `client/src/types/article.ts` |
 | Sửa logic fetch API, xử lý lỗi, loading state | `client/src/hooks/useStockNews.ts` |
+| Sửa portfolio logic, auto-fetch MBB, lưu localStorage | `client/src/App.tsx` |
 | Sửa UI layout lưới chính, logic phân loại 4 cột, banner thông báo | `client/src/layout/BentoGrid.tsx` |
-| Đổi số bài tối đa hiển thị mỗi cột (mặc định 3) | `client/src/layout/BentoGrid.tsx` → `MAX_VISIBLE` |
+| Đổi số bài tối đa hiển thị mỗi cột (hiện tại = 2) | `client/src/layout/BentoGrid.tsx` → `MAX_VISIBLE` |
+| Sửa ảnh fallback SVG local hoặc logic xử lý imageUrl rỗng | `client/src/utils/fallbackImage.ts` |
 | Sửa card hiển thị bài báo thường | `client/src/components/cards/ArticleCard.tsx` |
 | Sửa card bài nổi bật (isFeatured) | `client/src/components/cards/HeroCard.tsx` |
 | Sửa placeholder khi cột trống (card ngủ / quote editorial) | `client/src/components/cards/EmptyColumnPlaceholder.tsx` |
@@ -403,7 +433,7 @@ Màu accent theo category: CÂN ĐỐI → xám, TĂNG TRƯỞNG → xanh lá, R
 
 ---
 
-## 15. Các API bên ngoài
+## 16. Các API bên ngoài
 
 | Service | Model / Endpoint | Ghi chú |
 |---|---|---|
@@ -415,7 +445,7 @@ Màu accent theo category: CÂN ĐỐI → xám, TĂNG TRƯỞNG → xanh lá, R
 
 ---
 
-## 16. Tổng số Groq calls mỗi request (worst case)
+## 17. Tổng số Groq calls mỗi request (worst case)
 
 | Call | Điều kiện | max_tokens |
 |---|---|---|
@@ -428,10 +458,9 @@ Best case: **0 Groq calls** (không có bài mới → trả thẳng từ Firest
 
 ---
 
-## 17. TODO — Việc còn lại
+## 18. TODO — Việc còn lại
 
 - [ ] **Cron job 5 phút**: Thêm `node-cron` để server tự động gọi pipeline cho các ticker đang theo dõi, không cần chờ client request.
 - [ ] **Client đọc Firestore real-time**: Thay `fetch('/api/stock/...')` bằng Firebase SDK + `onSnapshot` để UI tự update khi có tin mới.
 - [ ] **Danh sách ticker theo dõi**: Cần định nghĩa danh sách ticker cron sẽ quét (hardcode hoặc lưu Firestore).
 - [ ] **CORS production**: Lock lại domain cụ thể khi deploy.
-- [ ] **Nút reset / clear**: Gắn `reset()` từ `useStockNews` vào nút "X" trong UI để user quay về trạng thái rỗng.

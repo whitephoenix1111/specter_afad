@@ -12,6 +12,7 @@
 //       → User nhập "VIC" + Enter
 //         → onSubmit("VIC") → onSearch("VIC") [prop từ BentoGrid]
 //           → fetchStock("VIC") [trong useStockNews hook ở App.tsx]
+//           → Nếu thành công + có bài → App.tsx tự lưu vào portfolio qua useEffect
 // ============================================================
 
 import React, { useState } from 'react';
@@ -23,12 +24,10 @@ import SearchPopup from '../popups/SearchPopup';
 interface SearchBarProps {
   // Callback nhận ticker đã uppercase, bubble lên đến useStockNews.fetchStock()
   onSearch: (ticker: string) => void;
-  // Callback thêm mã mới vào danh mục sau khi search thành công
-  onAddToPortfolio: (ticker: string) => void;
 }
 
 
-const SearchBar: React.FC<SearchBarProps> = ({ onSearch, onAddToPortfolio }) => {
+const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
 
   // ── State nội bộ: chỉ kiểm soát popup mở/đóng ────────────
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -85,7 +84,6 @@ const SearchBar: React.FC<SearchBarProps> = ({ onSearch, onAddToPortfolio }) => 
         onClose={() => setIsSearchOpen(false)}
         onSubmit={(ticker) => {
           onSearch(ticker);
-          onAddToPortfolio(ticker);
           setIsSearchOpen(false);
         }}
       />

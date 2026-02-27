@@ -49,12 +49,11 @@ interface BentoGridProps {
   portfolio: string[];                           // Danh sách mã trong danh mục
   activeTicker: string | null;                   // Mã đang được xem
   onSelectTicker: (ticker: string) => void;      // Click mã trong Portfolio
-  onAddToPortfolio: (ticker: string) => void;    // Thêm mã mới vào portfolio
-  // onReset: () => void;                        // TODO: thêm lại khi có nút "X" xoá kết quả
+  onReset: () => void;                           // Quay về trạng thái idle (xoá kết quả)
 }
 
 
-const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch, portfolio, activeTicker, onSelectTicker, onAddToPortfolio }) => {
+const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch, portfolio, activeTicker, onSelectTicker, onReset }) => {
 
   // ── State nội bộ ────────────────────────────────────────
   const [isSpecterOpen, setIsSpecterOpen] = useState(false);
@@ -133,7 +132,16 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch, portfolio, 
           {fetchState.status === "error" && (
             <div className="w-full bg-red-50 border-b border-r border-black text-red-700 text-xs font-bold px-6 py-2 flex justify-between items-center">
               <span>⚠ Lỗi: {fetchState.message}</span>
-              <span className="opacity-60">Vui lòng thử lại</span>
+              <div className="flex items-center gap-4">
+                <span className="opacity-60">Vui lòng thử lại</span>
+                <button
+                  onClick={onReset}
+                  className="text-red-400 hover:text-red-700 font-black text-base leading-none transition-colors cursor-pointer"
+                  aria-label="Xoá kết quả"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
 
@@ -148,7 +156,16 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch, portfolio, 
                   {fetchState.data.ticker}
                 </span>
               </div>
-              <span className="text-white/70 uppercase tracking-widest">Hãy thử mã khác</span>
+              <div className="flex items-center gap-4">
+                <span className="text-white/70 uppercase tracking-widest">Hãy thử mã khác</span>
+                <button
+                  onClick={onReset}
+                  className="text-white/60 hover:text-white font-black text-base leading-none transition-colors cursor-pointer"
+                  aria-label="Xoá kết quả"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
 
@@ -387,7 +404,7 @@ const BentoGrid: React.FC<BentoGridProps> = ({ fetchState, onSearch, portfolio, 
 
               {/* SearchBar: nhận onSearch prop, khi user submit ticker sẽ gọi
                   fetchStock() trong useStockNews qua chuỗi: SearchBar → SearchPopup → App */}
-              <SearchBar onSearch={onSearch} onAddToPortfolio={onAddToPortfolio} />
+              <SearchBar onSearch={onSearch} />
 
               {/* Widget lịch và danh mục */}
               <CalendarComponent />

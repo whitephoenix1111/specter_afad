@@ -69,17 +69,16 @@ const SpecterPopup: React.FC<SpecterPopupProps> = ({
           {/* Body Content */}
           <article className="space-y-6 text-gray-800 leading-[1.8] text-justify md:text-center font-normal">
             <p className="text-[15px]">
-              Đây là hệ thống phân tích dữ liệu thời gian thực được thiết kế để giải quyết vấn đề
-              <strong className="font-semibold"> 'nhiều thông tin' (Information Overload)</strong> trong đầu tư. Thay vì để nhà đầu tư bơi trong
-              biển tin tức hỗn loạn, chúng tôi loại bỏ 90% tạp âm của thị trường để mang đến cho
-              bạn 10% giá trị cốt lõi.
+              Thị trường không thiếu thông tin — nó đang thừa. Mỗi ngày hàng chục bài báo
+              viết về cùng một mã cổ phiếu, từ góc độ khác nhau, với mức độ quan trọng khác nhau.
+              <strong className="font-semibold"> SPECTER</strong> được xây dựng để giải quyết
+              đúng vấn đề đó.
             </p>
             <p className="text-[15px]">
-              Chỉ cần nhập mã cổ phiếu, <span className="font-bold">SPECTER</span> sẽ thay bạn 'đọc' toàn bộ thị trường trong 24h
-              qua. Dashboard không hiển thị những bảng biểu phức tạp; nó cung cấp 4 câu trả lời đắt
-              giá cho 4 vấn đề sống còn của một cổ phiếu. Kết hợp với hình ảnh nghệ thuật sinh ra từ
-              AI đại diện cho trạng thái thị trường, bạn sẽ cảm nhận được nhịp đập của cổ phiếu mà
-              không cần tốn hàng giờ nghiên cứu.
+              Chỉ cần nhập mã, hệ thống lập tức quét toàn bộ báo chí tài chính Việt Nam
+              và để AI sắp xếp mọi thứ vào đúng chỗ: tăng trưởng ra tăng trưởng,
+              rủi ro ra rủi ro. Tín hiệu đáng lo nhất được đẩy lên đầu
+              — để bạn không bỏ lỡ điều quan trọng nhất giữa muôn vàn tiếng ồn.
             </p>
           </article>
 

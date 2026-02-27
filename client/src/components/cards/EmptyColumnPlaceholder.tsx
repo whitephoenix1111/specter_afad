@@ -144,10 +144,10 @@ const EmptyColumnPlaceholder: React.FC<EmptyColumnPlaceholderProps> = ({
         className="w-8 h-[3px] mb-6"
         style={{ backgroundColor: accentColor[category] }}
       />
-      <p className="text-[13px] italic text-gray-400 leading-relaxed font-medium">
+      <p className="text-[16px] italic text-gray-400 leading-relaxed font-medium">
         "{quote}"
       </p>
-      <div className="mt-6 text-[9px] font-black uppercase tracking-widest text-gray-300">
+      <div className="mt-6 text-[12px] font-black uppercase tracking-widest">
         {category} · Chưa có tin mới
       </div>
     </div>
