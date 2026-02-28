@@ -7,7 +7,7 @@
 ## Tổng quan
 
 **Client** (React/Vite) → `GET /api/stock/:ticker` → **Server** (Node.js HTTP thuần):
-`RSS → Groq classify → Groq featured → HuggingFace image → Cloudinary → Firestore → JSON`
+`RSS → Groq classify → Groq featured → HuggingFace image → Cloudinary → Firestore → onSnapshot → Client`
 
 ---
 
@@ -16,8 +16,9 @@
 ```
 AFAD/
 ├── client/src/
-│   ├── App.tsx                     # Hook + portfolio localStorage + auto-fetch SCS + polling
-│   ├── hooks/useStockNews.ts       # Toàn bộ logic fetch API — hỗ trợ silent mode
+│   ├── App.tsx                     # Hook + portfolio localStorage + auto-fetch SCS
+│   ├── firebase.ts                 # Firebase Web SDK init + export db
+│   ├── hooks/useStockNews.ts       # fetchStock (trigger) + onSnapshot (realtime)
 │   ├── types/article.ts            # TS types client (Article, FetchState, StockApiResponse)
 │   ├── layout/BentoGrid.tsx        # Grid 5 cột, phân loại 4 nhóm, render
 │   ├── utils/fallbackImage.ts      # resolveImageUrl() + makeOnError() — SVG fallback
@@ -60,9 +61,9 @@ AFAD/
 | Cloudinary config | `server/src/firebase.ts` |
 | TS types server | `server/src/types/stock.ts` |
 | TS types client | `client/src/types/article.ts` |
-| Logic fetch API, loading/error state | `client/src/hooks/useStockNews.ts` |
+| Firebase Web SDK config (client) | `client/src/firebase.ts` |
+| Logic fetch trigger, onSnapshot, loading/error state | `client/src/hooks/useStockNews.ts` |
 | Mã mặc định, portfolio, auto-fetch, localStorage | `client/src/App.tsx` → `DEFAULT_TICKER` |
-| Polling interval, silent refresh | `client/src/App.tsx` → `POLL_INTERVAL_MS` |
 | Layout grid, phân loại 4 cột, banners | `client/src/layout/BentoGrid.tsx` |
 | MAX_VISIBLE (số bài/cột, hiện tại = 2) | `client/src/layout/BentoGrid.tsx` → `MAX_VISIBLE` |
 | Fallback SVG, xử lý imageUrl rỗng | `client/src/utils/fallbackImage.ts` |
@@ -88,18 +89,19 @@ AFAD/
 - **MAX_VISIBLE = 2** — hằng số trong `BentoGrid.tsx`.
 - **Portfolio**: key `"afad_portfolio"`, mã mặc định do `DEFAULT_TICKER` ở `App.tsx` quyết định (hiện tại `SCS`) — đổi 1 chỗ là đổi khắp nơi, chỉ lưu khi fetch thành công VÀ có bài.
 - **Auto-fetch `DEFAULT_TICKER`** khi app mount (`useEffect []` trong `App.tsx`).
-- **Polling**: client tự gọi `GET /api/stock/:ticker` mỗi `POLL_INTERVAL_MS` ms cho ticker đang xem. Đổi ticker → đồng hồ reset. Dùng `silent = true` → không hiện loading spinner, data cập nhật âm thầm. Chỉ fetch thường (có spinner) khi user chủ động chọn mã.
+- **Realtime**: client dùng `onSnapshot` (Firestore WebSocket) thay vì polling. `fetchStock` chỉ là trigger HTTP để server chạy pipeline — data thật đến qua `onSnapshot`. Đổi ticker → unsubscribe listener cũ, subscribe listener mới.
 - **Retry Groq 429**: tối đa 3 lần, delay `attempt × 30s`.
 - **Image song song**: `Promise.all` — lỗi 1 bài không chặn bài khác.
 - **Filter ticker**: `\bTICKER\b` trong title/URL — tránh nhầm mã (VCL ≠ VLC).
 - **Không dùng Express** — `http.createServer` thuần.
 - **Route regex**: `/^\/api\/stock\/([A-Za-z.]+)$/` — cho phép dấu chấm.
 - **CORS `*`** — chỉ phù hợp dev.
+- **Firestore Security Rules**: `stocks/{ticker}` — `allow read: if true`, `allow write: if false`. Chỉ server (Admin SDK) mới ghi được.
 
 ---
 
 ## TODO
 
 - [x] ~~Cron job~~ → thay bằng client-side polling (đơn giản hơn, đúng ticker đang xem)
-- [ ] Client real-time (`onSnapshot` Firestore)
+- [x] ~~Polling~~ → thay bằng Firestore `onSnapshot` (realtime, không tốn request thừa)
 - [ ] CORS production

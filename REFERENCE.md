@@ -9,11 +9,20 @@
 ```
 SearchPopup → validate (^[A-Z0-9]{1,4}$) → onSubmit(ticker)
   → SearchBar.onSearch → App.handleSearch → setActiveTicker + fetchStock
-    → useStockNews: setState(loading) → fetch /api/stock/VIC
-      → lỗi: setState(error)
-      → ok: setState(success) → App useEffect lưu portfolio nếu có bài
-        → BentoGrid: filter 4 nhóm → heroArticle → render grid
+    → useStockNews: setState(loading)
+      → subscribeToTicker: onSnapshot lắng nghe stocks/{ticker}
+      → fetch /api/stock/VIC (trigger pipeline, không đọc response)
+        → lỗi HTTP: setState(error) nếu onSnapshot chưa cập nhật gì
+        → Firestore ghi xong → onSnapshot fire → setState(success)
+          → App useEffect lưu portfolio nếu có bài
+            → BentoGrid: filter 4 nhóm → heroArticle → render grid
 ```
+
+**onSnapshot behavior:**
+- Fire ngay lập tức khi subscribe nếu document đã tồn tại (data cũ từ cache)
+- Fire lần 2 nếu server pipeline tìm được bài mới và ghi vào Firestore
+- Đổi ticker → unsubscribe listener cũ, subscribe listener mới
+- Unmount → cleanup tự động qua useEffect
 
 **BentoGrid render logic:**
 - `heroArticle = articles.find(a => a.isFeatured) ?? ruiRo[0] ?? null`
@@ -36,6 +45,7 @@ GET /api/stock/VIC
         + 1 Groq call sinh summary (max_tokens=300)
   → [4] image.service: Promise.all — RSS imageUrl? dùng luôn : HuggingFace → Cloudinary
   → merge [...newWithImages, ...oldArticles].slice(0, 20) → ghi Firestore
+  → onSnapshot client tự nhận update
 ```
 
 **Worst case: 3 Groq calls** | **Best case: 0 Groq calls**
@@ -105,6 +115,7 @@ type FetchState =
 | `CLOUDINARY_API_SECRET` | firebase.ts |
 
 Firebase Admin → `server/serviceAccountKey.json` (không dùng .env, KHÔNG commit git).
+Firebase Web SDK config → `client/src/firebase.ts` (KHÔNG commit git — chứa apiKey).
 
 ---
 
@@ -127,6 +138,14 @@ stocks/{ticker}
   ticker:    string
   updatedAt: Timestamp
   articles:  CategorizedArticle[]  // tối đa 20 bài, mới nhất đầu
+```
+
+**Security Rules:**
+```
+match /stocks/{ticker} {
+  allow read: if true;   // client onSnapshot đọc được
+  allow write: if false; // chỉ server Admin SDK mới ghi được
+}
 ```
 
 ---
@@ -194,4 +213,4 @@ proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: true } }
 | Groq | `llama-3.3-70b-versatile` |
 | HuggingFace | `black-forest-labs/FLUX.1-schnell` (`x-wait-for-model: true`) |
 | Cloudinary | REST Upload API, folder `afad/` |
-| Firestore | `firebase-admin`, collection `stocks` |
+| Firestore | `firebase-admin` (server) + `firebase` Web SDK (client, onSnapshot) |
