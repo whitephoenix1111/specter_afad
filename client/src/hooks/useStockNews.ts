@@ -88,7 +88,8 @@ export function useStockNews() {
     subscribeToTicker(normalized);
 
     try {
-      const res = await fetch(`/api/stock/${normalized}`);
+      const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
+      const res = await fetch(`${apiBase}/api/stock/${normalized}`);
       if (!res.ok) {
         throw new Error(`Server trả lỗi ${res.status}: ${res.statusText}`);
       }
