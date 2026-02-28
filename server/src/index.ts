@@ -61,4 +61,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Server đang chạy tại http://localhost:${PORT}`);
   console.log(`Thử: http://localhost:${PORT}/api/stock/VIC`);
+
 });

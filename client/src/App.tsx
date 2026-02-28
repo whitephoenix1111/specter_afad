@@ -5,7 +5,7 @@
 // Nhiệm vụ:
 //   1. Khởi tạo hook useStockNews (nguồn dữ liệu duy nhất)
 //   2. Quản lý danh sách portfolio (lưu localStorage)
-//   3. Auto-fetch MBB khi mount lần đầu
+//   3. Auto-fetch mã mặc định khi mount lần đầu
 //   4. Truyền state + các hàm xuống BentoGrid
 //
 // Quy tắc portfolio:
@@ -20,7 +20,9 @@ import { useStockNews } from "./hooks/useStockNews";
 
 // ── Hằng số ──────────────────────────────────────────────────
 const STORAGE_KEY = "afad_portfolio";
-const DEFAULT_PORTFOLIO = ["MBB"];   // MBB luôn là mã mặc định đầu tiên
+const DEFAULT_TICKER = "SCS";        // Mã mặc định — đổi ở đây là đổi khắp nơi
+const DEFAULT_PORTFOLIO = [DEFAULT_TICKER];
+const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 phút — ngoài component để không là dependency của useEffect
 
 // ── Helper: đọc / ghi localStorage ──────────────────────────
 function loadPortfolio(): string[] {
@@ -30,9 +32,9 @@ function loadPortfolio(): string[] {
     const parsed = JSON.parse(raw);
     // Đảm bảo luôn là mảng string
     if (!Array.isArray(parsed)) return DEFAULT_PORTFOLIO;
-    // Đảm bảo MBB luôn ở đầu danh sách
-    const withMBB = ["MBB", ...parsed.filter((t: string) => t !== "MBB")];
-    return withMBB;
+    // Đảm bảo DEFAULT_TICKER luôn ở đầu danh sách
+    const withDefault = [DEFAULT_TICKER, ...parsed.filter((t: string) => t !== DEFAULT_TICKER)];
+    return withDefault;
   } catch {
     return DEFAULT_PORTFOLIO;
   }
@@ -57,14 +59,29 @@ function App() {
   const [portfolio, setPortfolio] = useState<string[]>(loadPortfolio);
 
   // Ticker đang được chọn / đang hiển thị trong BentoGrid
-  const [activeTicker, setActiveTicker] = useState<string>("MBB");
+  const [activeTicker, setActiveTicker] = useState<string>(DEFAULT_TICKER);
 
 
-  // ── Auto-fetch MBB khi app khởi động ────────────────────────
+  // ── Auto-fetch mã mặc định khi app khởi động ─────────────────
   useEffect(() => {
-    fetchStock("MBB");
+    fetchStock(DEFAULT_TICKER);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // chỉ chạy 1 lần khi mount
+
+
+  // ── Polling: tự động refresh mã đang xem mỗi 5 phút ────────
+  // Mỗi khi activeTicker thay đổi:
+  //   - Xoá interval cũ (cleanup)
+  //   - Tạo interval mới cho ticker mới
+  // Không fetch ngay ở đây — fetch đã được gọi ở handleSearch / handleSelectTicker.
+  useEffect(() => {
+    const id = setInterval(() => {
+      console.log(`[Polling] Auto-refresh ${activeTicker} lúc ${new Date().toLocaleTimeString("vi-VN")}`);
+      fetchStock(activeTicker, true); // silent — không hiện loading spinner
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(id); // cleanup khi ticker đổi hoặc unmount
+  }, [activeTicker, fetchStock, POLL_INTERVAL_MS]);
 
 
   // ── Tự động lưu portfolio sau khi fetch thành công ──────────

@@ -24,7 +24,7 @@ export function useStockNews() {
   // ── BƯỚC 2: Hàm gọi API ─────────────────────────────────
   // useCallback để hàm không bị tạo lại mỗi lần render — tránh vòng lặp
   // vô hạn nếu component dùng fetchStock trong useEffect.
-  const fetchStock = useCallback(async (ticker: string) => {
+  const fetchStock = useCallback(async (ticker: string, silent = false) => {
 
     // Bước 2a: Làm sạch input — trim khoảng trắng, chuyển hoa.
     // "vic " → "VIC", " HPG" → "HPG"
@@ -33,9 +33,9 @@ export function useStockNews() {
     // Không làm gì nếu chuỗi rỗng sau khi trim (người dùng ấn submit lúc input trống)
     if (!normalized) return;
 
-    // Bước 2b: Chuyển sang loading ngay lập tức.
+    // Bước 2b: Chuyển sang loading ngay lập tức — trừ khi silent (polling ngầm).
     // BentoGrid sẽ thấy status = "loading" và hiện overlay spinner.
-    setState({ status: "loading" });
+    if (!silent) setState({ status: "loading" });
 
     try {
 
