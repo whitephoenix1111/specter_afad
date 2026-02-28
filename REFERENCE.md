@@ -7,12 +7,12 @@
 ## Luồng dữ liệu Client
 
 ```
-SearchPopup → validate (^[A-Z0-9]{1,4}$) → onSubmit(ticker)
+SearchPopup → validate (^[A-Z0-9]{1,3}$) → onSubmit(ticker)
   → SearchBar.onSearch → App.handleSearch → setActiveTicker + fetchStock
     → useStockNews: setState(loading)
       → subscribeToTicker: onSnapshot lắng nghe stocks/{ticker}
       → fetch /api/stock/VIC (trigger pipeline, không đọc response)
-        → lỗi HTTP: setState(error) nếu onSnapshot chưa cập nhật gì
+        → lỗi HTTP: đọc JSON body lấy message → setState(error) nếu onSnapshot chưa cập nhật gì
         → Firestore ghi xong → onSnapshot fire → setState(success)
           → App useEffect lưu portfolio nếu có bài
             → BentoGrid: filter 4 nhóm → heroArticle → render grid
@@ -36,7 +36,10 @@ SearchPopup → validate (^[A-Z0-9]{1,4}$) → onSubmit(ticker)
 ```
 GET /api/stock/VIC
   → controller: đọc Firestore → lấy existingUrls (Set<string>)
-  → [1] news.service: RSS → parse XML → resolve URL song song → filter \bVIC\b
+  → [1] news.service: RSS → parse XML → resolve URL song song
+        → Layer 1: filter \bVIC\b trong title/URL
+        → Layer 2: heuristic tài chính (domain báo tài chính HOẶC từ khóa CK)
+        → < 2 bài hợp lệ → throw lỗi "Không tìm thấy tin tức cổ phiếu hợp lệ..."
   → lọc bài mới (url chưa có trong existingUrls)
   → không có bài mới? → trả Firestore { fromCache: true }
   → [2] classify.service.classify(): 1 Groq call, tất cả tiêu đề bài mới
@@ -192,7 +195,8 @@ Màu accent: CÂN ĐỐI `#6B7280` · TĂNG TRƯỞNG `#16A34A` · RỦI RO `#DC
 - Layout: `flex-wrap-reverse`, button `flex-1 min-w-[calc(50%-4px)]` → 2 mã/hàng
 
 ### Validate SearchPopup
-- Regex: `^[A-Z0-9]{1,4}$`, `maxLength={4}`, auto-uppercase
+- Regex: `^[A-Z0-9]{1,3}$`, `maxLength={3}`, auto-uppercase
+- Lý do 3 ký tự: mã cổ phiếu Việt Nam (HOSE/HNX/UPCOM) tối đa 3 ký tự
 
 ---
 

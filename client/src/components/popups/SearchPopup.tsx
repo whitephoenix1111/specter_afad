@@ -47,9 +47,9 @@ const SearchPopup: React.FC<SearchPopupProps> = ({ isOpen, onClose, onSubmit }) 
     const ticker = searchValue.trim().toUpperCase();
     if (!ticker) return;
 
-    // Chỉ cho phép A-Z và 0-9, không có ký tự đặc biệt, tối đa 4 ký tự
-    if (!/^[A-Z0-9]{1,4}$/.test(ticker)) {
-      setValidationError('Mã chỉ gồm chữ cái và số, tối đa 4 ký tự.');
+    // Chỉ cho phép A-Z và 0-9, không có ký tự đặc biệt, tối đa 3 ký tự
+    if (!/^[A-Z0-9]{1,3}$/.test(ticker)) {
+      setValidationError('Mã chỉ gồm chữ cái và số, tối đa 3 ký tự.');
       return;
     }
 
@@ -117,7 +117,7 @@ const SearchPopup: React.FC<SearchPopupProps> = ({ isOpen, onClose, onSubmit }) 
                   onKeyDown={handleKeyDown}
                   placeholder="Ví dụ: VIC, HPG, MBB..."
                   className="w-full outline-none text-sm text-gray-700 uppercase"
-                  maxLength={4}
+                  maxLength={3}
                 />
               </div>
 
@@ -127,7 +127,7 @@ const SearchPopup: React.FC<SearchPopupProps> = ({ isOpen, onClose, onSubmit }) 
               )}
 
               <div className="mt-4 flex justify-between items-center text-[11px]">
-                <span>Nhập mã cổ phiếu tối đa <strong>4</strong> ký tự.</span>
+                <span>Nhập mã cổ phiếu tối đa <strong>3</strong> ký tự.</span>
                 <button
                   onClick={handleSubmit}
                   disabled={!searchValue.trim()}

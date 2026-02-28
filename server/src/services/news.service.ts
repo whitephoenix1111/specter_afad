@@ -158,15 +158,69 @@ export class NewsService {
     const articles = await this.parseRss(xml);
     console.log(`[News] Lấy được ${articles.length} bài từ RSS cho ${ticker}`);
 
-    // Filter chặt: chỉ giữ bài có chứa đúng ticker trong title hoặc URL.
+    // ── Layer 1: Filter ticker ────────────────────────────────────────────
+    // Chỉ giữ bài có chứa đúng ticker trong title hoặc URL.
     // Google News RSS là full-text search nên "VCL" có thể trả về bài chứa "VLC".
     // Dùng word boundary (\b) để tránh match từng phần: "VIC" không match trong "PVIC".
     const tickerRegex = new RegExp(`\\b${ticker}\\b`, "i");
     const filtered = articles.filter(
       (a) => tickerRegex.test(a.title) || tickerRegex.test(a.url)
     );
-
     console.log(`[News] Còn ${filtered.length} bài sau khi filter chính xác theo "${ticker}"`);
-    return filtered;
+
+    // ── Layer 2: Heuristic tài chính ─────────────────────────────────────
+    // Loại bỏ trường hợp ticker trùng từ viết tắt thông dụng (VD: KOL, CEO, BOT…).
+    // Mỗi bài phải pass ÍT NHẤT 1 trong 2 điều kiện:
+    //   (a) Đến từ domain báo tài chính đã biết
+    //   (b) Title/URL chứa từ khóa ngữ nghĩa liên quan thị trường chứng khoán
+    // Nếu toàn bộ bài đều fail → ném lỗi để controller báo cho client.
+
+    const FINANCE_DOMAINS = [
+      "cafef.vn", "vietstock.vn", "tinnhanhchungkhoan.vn", "ndh.vn",
+      "24hmoney.vn", "stockbiz.vn", "vietnambiz.vn", "diendandoanhnghiep.vn",
+      "tapchitaichinh.vn", "thoibaotaichinhvietnam.vn", "bnews.vn",
+      "vnexpress.net", "thanhnien.vn", "tuoitre.vn", "dantri.com.vn",
+      "baomoi.com", "thesaigontimes.vn", "finance.viettel.vn", "stockbiz.vn",
+    ];
+
+    const FINANCE_KEYWORDS = [
+      // Thị trường
+      "cổ phiếu", "chứng khoán", "hose", "hnx", "upcom", "vn-index", "vnindex",
+      "phiên giao dịch", "phiên hôm nay", "thị trường",
+      // Hành động giá
+      "tăng điểm", "giảm điểm", "tăng trần", "giảm sàn", "tăng mạnh", "giảm mạnh",
+      "bứt phá", "lao dốc", "hồi phục", "điều chỉnh",
+      // Chỉ số cơ bản
+      "eps", "p/e", "p/b", "roe", "lợi nhuận", "doanh thu", "kết quả kinh doanh",
+      "cổ tức", "phát hành thêm", "mua lại cổ phiếu", "room ngoại",
+      // Tổ chức / hành vi
+      "nhà đầu tư", "khối ngoại", "tự doanh", "margin", "đại hội cổ đông",
+    ];
+
+    const financeKeywordRegex = new RegExp(FINANCE_KEYWORDS.join("|"), "i");
+
+    const isFinanceArticle = (a: { url: string; title: string; source: string }): boolean => {
+      // Điều kiện (a): domain nguồn hoặc URL thuộc báo tài chính
+      const fromFinanceDomain = FINANCE_DOMAINS.some(
+        (d) => a.url.includes(d) || a.source.toLowerCase().includes(d.split(".")[0] ?? "")
+      );
+      if (fromFinanceDomain) return true;
+
+      // Điều kiện (b): title hoặc URL chứa từ khóa tài chính
+      return financeKeywordRegex.test(a.title) || financeKeywordRegex.test(a.url);
+    };
+
+    const financeFiltered = filtered.filter(isFinanceArticle);
+    console.log(`[News] Còn ${financeFiltered.length} bài sau heuristic tài chính`);
+
+    // Ngưỡng tối thiểu: cần ít nhất 2 bài tài chính thực sự.
+    // Nếu không đủ → ticker không phải mã CK hoặc không có tin → báo lỗi rõ ràng.
+    if (financeFiltered.length < 2) {
+      throw new Error(
+        `Không tìm thấy tin tức cổ phiếu hợp lệ cho mã "${ticker}". Vui lòng kiểm tra lại mã.`
+      );
+    }
+
+    return financeFiltered;
   }
 }

@@ -88,11 +88,13 @@ AFAD/
 - **EmptyColumnPlaceholder**: chỉ render khi `status === "success"`.
 - **MAX_VISIBLE = 2** — hằng số trong `BentoGrid.tsx`.
 - **Portfolio**: key `"afad_portfolio"`, mã mặc định do `DEFAULT_TICKER` ở `App.tsx` quyết định (hiện tại `SCS`) — đổi 1 chỗ là đổi khắp nơi, chỉ lưu khi fetch thành công VÀ có bài.
+- **Error message từ server**: `useStockNews.fetchStock` đọc JSON body khi `!res.ok` để lấy `body.error` — hiển thị đúng message cụ thể (VD: mã không hợp lệ) thay vì chỉ show HTTP status code.
 - **Auto-fetch `DEFAULT_TICKER`** khi app mount (`useEffect []` trong `App.tsx`).
 - **Realtime**: client dùng `onSnapshot` (Firestore WebSocket) thay vì polling. `fetchStock` chỉ là trigger HTTP để server chạy pipeline — data thật đến qua `onSnapshot`. Đổi ticker → unsubscribe listener cũ, subscribe listener mới.
 - **Retry Groq 429**: tối đa 3 lần, delay `attempt × 30s`.
 - **Image song song**: `Promise.all` — lỗi 1 bài không chặn bài khác.
-- **Filter ticker**: `\bTICKER\b` trong title/URL — tránh nhầm mã (VCL ≠ VLC).
+- **Filter ticker Layer 1**: `\bTICKER\b` trong title/URL — tránh nhầm mã (VCL ≠ VLC).
+- **Filter heuristic Layer 2**: mỗi bài phải đến từ domain báo tài chính (cafef, vietstock, 24hmoney...) HOẶC title/URL chứa từ khóa chứng khoán (cổ phiếu, HOSE, HNX, lợi nhuận...). Dưới 2 bài hợp lệ → throw lỗi rõ ràng về client. Mục đích: chặn ticker trùng từ viết tắt thông dụng (KOL, CEO, BOT...).
 - **Không dùng Express** — `http.createServer` thuần.
 - **Route regex**: `/^\/api\/stock\/([A-Za-z.]+)$/` — cho phép dấu chấm.
 - **CORS `*`** — chỉ phù hợp dev.
