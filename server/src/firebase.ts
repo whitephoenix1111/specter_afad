@@ -2,18 +2,18 @@
 // firebase.ts — Khởi tạo Firebase Admin SDK và Cloudinary.
 // Import file này ở bất kỳ đâu cần dùng db hoặc uploadToCloudinary.
 //
-// Firebase Admin dùng serviceAccountKey.json để xác thực.
+// Firebase Admin dùng FIREBASE_SERVICE_ACCOUNT (JSON string trong env)
 // Cloudinary dùng credentials từ .env để upload ảnh AI.
 // ============================================================
 
 import { initializeApp, cert, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { v2 as cloudinary } from "cloudinary";
-import { createRequire } from "module";
 
-// Dùng createRequire để import JSON với "type": "module" (ESM)
-const require = createRequire(import.meta.url);
-const serviceAccount = require("../serviceAccountKey.json") as ServiceAccount;
+// Parse Firebase service account từ env var (JSON string)
+const serviceAccount = JSON.parse(
+  process.env.FIREBASE_SERVICE_ACCOUNT ?? "{}"
+) as ServiceAccount;
 
 // Khởi tạo Firebase Admin — chỉ chạy 1 lần khi module được load
 initializeApp({
@@ -46,8 +46,8 @@ export async function uploadToCloudinary(
       .upload_stream(
         {
           public_id: publicId,
-          folder: "afad",           // Tất cả ảnh vào folder afad/
-          overwrite: true,          // Ghi đè nếu cùng publicId → không tích lũy file thừa
+          folder: "afad",
+          overwrite: true,
           resource_type: "image",
           format: "jpg",
         },
